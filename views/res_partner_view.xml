@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record model="ir.ui.view" id="is_view_partner_form">
+        <field name="name">is_view_partner_form</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <field name="vat" position="after">
+                <field name="is_effectif"  invisible="not is_company"/>
+                <field name="is_activite"  invisible="not is_company"/>
+                <field name="is_dirigeant" invisible="not is_company"/>
+                <field name="is_contact"   invisible="not is_company"/>
+            </field>
+            <field name="category_id" position="after">
+                <field name="is_derniere_intervention"/>
+            </field>
+            <field name="property_account_position_id" position="after">
+                <field name="is_siren"               invisible="not is_company"/>
+                <field name="is_forme_juridique"     invisible="not is_company"/>
+                <field name="is_date_debut_activite" invisible="not is_company"/>
+                <field name="is_categorie"           invisible="not is_company"/>
+                <field name="is_dynacase_id"         invisible="not is_company"/>
+            </field>
+        </field>
+    </record>
+    <record model="ir.ui.view" id="is_view_partner_tree">
+        <field name="name">is_view_partner_tree</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_tree"/>
+        <field name="arch" type="xml">
+            <field name="phone" position="before">
+                <field name="is_contact" optional="show"/>
+            </field>
+            <field name="city" position="replace">
+                <field name="zip"         optional="show"/>
+                <field name="city"        optional="show"/>
+                <field name="is_effectif" optional="show"/>
+                <field name="currency_id" optional="show"/>
+            </field>
+            <field name="user_id"      position="replace"/>
+            <field name="activity_ids" position="replace"/>
+            <field name="country_id"   position="replace"/>
+            <field name="state_id"   position="replace"/>
+            <field name="company_id"   position="replace"/>
+
+<!-- "state_id" optional="hide" readonly="1"/>
+                    <field name="country_id" optional="show" readonly="1"/>
+                    <field name="vat" optional="hide" readonly="1"/>
+                    <field name="category_id" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                    <field name="company_id" groups="base.group_multi_company" readonly="1"/>
+
+ -->
+
+        </field>
+    </record>
+    <record  id="is_client_action" model="ir.actions.act_window">
+        <field name="name">Clients</field>
+        <field name="res_model">res.partner</field>
+        <field name="limit">100</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{"search_default_customer":1}</field>
+    </record>
+</odoo>

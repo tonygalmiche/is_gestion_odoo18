@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- is.affaire -->
+    <record id="is_affaire_seq" model="ir.sequence">
+        <field name="name">Code Affaire</field>
+        <field name="code">is.affaire</field>
+        <field name="prefix"></field>
+        <field name="padding">5</field>
+        <field eval="False" name="company_id"/>
+    </record>
+    <record id="is_affaire_form" model="ir.ui.view">
+        <field name="name">is.affaire.form</field>
+        <field name="model">is.affaire</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <field 
+                        name="state" 
+                        widget="statusbar"
+                        statusbar_visible="devis,abandonnee,active,soldee"
+                        clickable="True"
+                    />
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="intitule"/>
+                            <field name="partner_id"/>
+                            <field name="date_debut"/>
+                            <field name="date_fin"/>
+                        </group>
+                        <group>
+                            <field name="ca_previsionnel"/>
+                            <field name="frais_previsionnel"/>
+
+                        </group>
+                    </group>
+                    <group>
+                        <field name="commentaire"/>
+                    </group>
+                    <!-- <group string="Factures">
+                        <field name="facture_ids" nolabel="1" readonly="1">
+                            <list>
+                                <button string="Facture" name="acceder_facture_action" type="object" icon="fa-search-plus"/>
+                                <field name="invoice_date"/>
+                                <field name="name"/>
+                                <field name="date_due"/>
+                                <field name="amount_untaxed"      string="Total HT"   sum="Total"/>
+                                <field name="amount_tax"          string="TVA"        sum="Total"/>
+                                <field name="amount_total_signed" string="Total TTC"  sum="Total"/>
+                                <field name="residual_signed"     string="Restant du" sum="Total"/>
+                                <field name="state"/>
+                            </list>
+                        </field>
+                    </group> -->
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="is_affaire_list" model="ir.ui.view">
+        <field name="name">is.affaire.list</field>
+        <field name="model">is.affaire</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"               optional="show"/>
+                <field name="intitule"           optional="show"/>
+                <field name="partner_id"         optional="show" widget="many2one_clickable"/>
+                <field name="date_debut"         optional="show"/>
+                <field name="date_fin"           optional="show"/>
+                <field name="ca_previsionnel"    optional="hide"/>
+                <field name="frais_previsionnel" optional="hide"/>
+                <field name="state"              optional="show"/>
+            </list>
+        </field>
+    </record>
+    <record id="is_affaire_search" model="ir.ui.view">
+        <field name="name">is.affaire.search</field>
+        <field name="model">is.affaire</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="intitule"/>
+                <field name="partner_id"/>
+                <field name="commentaire"/>
+                <field name="state"/>
+           </search>
+        </field>
+    </record>
+    <record  id="is_affaire_action" model="ir.actions.act_window">
+        <field name="name">Affaires</field>
+        <field name="res_model">is.affaire</field>
+        <field name="limit">100</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+
+</odoo>
