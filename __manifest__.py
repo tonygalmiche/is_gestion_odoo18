@@ -14,7 +14,6 @@ Module Gestion Odoo 18 pour InfoSaône
         'base',
         'account',
         'l10n_fr',
-        #'sale_management',
     ],
     'data' : [
         'security/ir.model.access.csv',
@@ -24,8 +23,8 @@ Module Gestion Odoo 18 pour InfoSaône
         'views/res_company_view.xml',
         'views/account_move_view.xml',
         'views/menu.xml',
-        # 'report/report_templates.xml',
-        # 'report/report_invoice.xml',
+        'report/report_templates.xml',
+        'report/report_invoice.xml',
     ],
     'installable': True,
     'application': True,

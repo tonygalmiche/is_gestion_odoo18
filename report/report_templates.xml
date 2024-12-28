@@ -1,78 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <template id="is_external_layout_standard" name="is_external_layout_standard" inherit_id="web.external_layout_standard">
-        <xpath expr="//div[hasclass('header')]" position="replace">
-            <div class="header">
-                <div class="row">
-                    <div class="col-4 mb4">
+    <template id="web.external_layout_standard">
+        <div class="header">
+            <table style="width:100%;font-size:8pt;margin-top:3mm">
+                <tr style="vertical-align: top">
+                    <td style="width:40%;vertical-align: top">
                         <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-height: 25mm;" alt="Logo"/>
-                    </div>
-                    <div class="col-4" style="font-size:9pt;font-style:oblique;">
-                        <b>Intégrateur du logiciel libre<br />d'ERP / CRM Odoo</b><br />
-                        <span t-field="company.street"/> <span t-field="company.zip"/> <span t-field="company.city"/><br />
-                        Tél : <span t-field="company.phone"/><br />
-                        <span t-field="company.email"/>
-                    </div>
-                    <div class="col-4 text-right" style="font-size:16pt;font-weight:bold">
-                        <div t-if="o.type == 'out_invoice'">Facture N°<span t-field="o.number"/></div>
-                        <div t-if="o.type == 'out_refund'">Avoir N°<span t-field="o.number"/></div>
-                        <div>du <span t-field="o.date_invoice"/></div>
-                    </div>
+                    </td>
+                    <td style="width:30%;vertical-align: top">
+                        <div style="font-size:9pt;font-style:oblique;">
+                            <b>Intégrateur du logiciel libre<br />d'ERP / CRM Odoo</b><br />
+                            <span t-field="company.street"/> <span t-field="company.zip"/> <span t-field="company.city"/><br />
+                            Tél : <span t-field="company.phone"/><br />
+                            <span t-field="company.email"/>
+                        </div>
+                    </td>
+                    <td style="width:30%;vertical-align: top">
+                        <div class="text-end" style="font-size:16pt;font-weight:bold">
+                            <div t-if="o.move_type == 'out_invoice'">Facture N°<span t-field="o.name"/></div>
+                            <div t-if="o.move_type == 'out_refund'">Avoir N°<span t-field="o.name"/></div>
+                            <div>du <span t-field="o.invoice_date"/></div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+
+            <div class="row">
+                <div class="col-4">
                 </div>
-            </div>
-        </xpath>
-        <xpath expr="//div[hasclass('o_report_layout_standard')]" position="replace">
-            <div class="article o_report_layout_standard"  t-att-data-oe-model="o and o._name" t-att-data-oe-id="o and o.id">
-                <t t-raw="0"/>
-            </div>
-        </xpath>
-        <xpath expr="//div[hasclass('footer')]" position="replace">
+             </div>
+        </div>
 
-            <style>
-                .logo{
-                    max-height: 20mm;
-                    max-width: 20mm;
-                }
-            </style>
+        <div t-attf-class="article o_report_layout_standard o_table_standard o_company_#{company.id}_layout o_snail_mail {{'o_report_layout_background' if company.layout_background != 'Blank' else ''}}"
+             t-attf-style="background-image: url({{ 'data:image/png;base64,%s' % company.layout_background_image.decode('utf-8') if company.layout_background_image and company.layout_background == 'Custom' else
+                           '/base/static/img/demo_logo_report.png' if company.layout_background == 'Demo logo' else ''}});"
+             t-att-data-oe-model="o and o._name"
+             t-att-data-oe-id="o and o.id"
+             t-att-data-oe-lang="o and o.env.context.get('lang')">
+            <t t-out="0"/>
+        </div>
 
-            <div class="footer o_standard_footer">
-                <!-- <table style="width:100%;font-size:8pt;border-top: 1px solid black;">
-                    <tr>
-                        <td style="width:16%;text-align:center">
-                            <img t-att-src="'/is_gestion_odoo/static/src/img/cpcb.png'"          style="max-height:20mm;max-width:30mm"/>
-                        </td>
-                        <td style="width:16%;text-align:center">
-                            <img t-att-src="'/is_gestion_odoo/static/src/img/bfc-numerique.png'" style="max-height:20mm;max-width:30mm"/>
-                        </td>
-                        <td style="width:36%;text-align:center">
-                            <img t-att-src="'/is_gestion_odoo/static/src/img/odoo.png'"          style="max-height:25mm;max-width:60mm"/>
-                        </td>
-                        <td style="width:16%;text-align:center">
-                            <img t-att-src="'/is_gestion_odoo/static/src/img/odoo-oca.png'"      style="max-height:20mm;max-width:30mm"/>
-                        </td>
-                        <td style="width:16%;text-align:center">
-                            <img t-att-src="'/is_gestion_odoo/static/src/img/datadock.png'"      style="max-height:20mm;max-width:30mm"/>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="text-align:center">Membre de la chambre professionnelle des consultants de Bourgogne</td>
-                        <td style="text-align:center">Membre de<br />Bourgogne Franche-Comté Numérique</td>
-                        <td style="text-align:center"><b>Intégrateur du<br />logiciel libre<br />d'ERP / CRM Odoo</b></td>
-                        <td style="text-align:center">Membre de l'Odoo<br />Community Association</td>
-                        <td style="text-align:center">Référencé sur Datadock</td>
-                    </tr>
-                </table> -->
-                <table style="width:100%;font-size:8pt;border-top: 1px solid black;margin-top:3mm">
+        <div t-attf-class="footer o_company_#{company.id}_layout {{report_type != 'pdf' and 'mt-auto'}}">
+            <div class="o_footer_content d-flex border-top pt-2">
+                <style>
+                    .logo{
+                        max-height: 20mm;
+                        max-width: 20mm;
+                    }
+                </style>
+                <table style="width:100%;font-size:8pt;margin-top:3mm">
                     <tr>
                         <td style="width:75%">
                             Sans escompte si règlement anticipé.<br />
                             En cas de retard de paiement, un intérêt de retard de 0,50 % par mois sera appliqué au montant HT de la facture.<br />
                             SARL au capital de 8000€ - R.C.S. DIJON 529 460 909 – N° de Gestion 2011 B 20<br />
-                            N°SIRET : <span t-field="company.siret"/>  - N° TVA intracommunautaire : <span t-field="company.vat"/><br />
+                            N°SIRET : <span t-if="company.siret" t-field="company.siret"/>  - N° TVA intracommunautaire : <span t-field="company.vat"/><br />
                             Numéro de déclaration d’activité : 26 21 02647 21 obtenu auprès de la préfecture de Bourgogne le 06/08/2009<br />
                         </td>
                         <td style="width:15%;text-align:center;vertical-align:middle">
-                            <img t-att-src="'/is_gestion_odoo/static/src/img/odoo-oca.png'" style="max-height:20mm;max-width:30mm"/><br />
+                            <img t-att-src="'/is_gestion_odoo18/static/src/img/odoo-oca.png'" style="max-height:20mm;max-width:30mm"/><br />
                             Membre de l'Odoo<br />Community Association
                         </td>
                         <td style="text-align:right;vertical-align:middle">
@@ -81,6 +67,6 @@
                     </tr>
                 </table>
             </div>
-        </xpath>
+        </div>
     </template>
 </odoo>

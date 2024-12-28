@@ -91,7 +91,7 @@
     />
 
 
-    <!-- <menuitem
+    <menuitem
         id="is_statistique_menu"
         name="Statistiques"
         parent="is_crm_main_menu"
@@ -111,7 +111,7 @@
         sequence="20"
         action="is_account_invoice_year_pivot_action"
     />
- -->
+
 
 
 
