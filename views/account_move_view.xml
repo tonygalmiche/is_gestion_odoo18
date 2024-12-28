@@ -31,9 +31,12 @@ records.calculer_tva()
             <field name="inherit_id" ref="account.view_invoice_tree" />
             <field name="arch" type="xml">
                 <field name="invoice_date" position="before">
-                    <field name="is_affaire_id"/>
-                    <field name="is_amount_untaxed_percent"/>
-                    <field name="currency_id" optional="show"/>
+                    <field name="is_affaire_id"             optional="show"/>
+                    <field name="is_amount_untaxed_percent" optional="show"/>
+                    <field name="currency_id"               optional="show"/>
+                </field>
+                <field name="invoice_date_due" position="after">
+                    <field name="is_date_paiement" optional="show"/>
                 </field>
             </field>
         </record>
@@ -53,8 +56,8 @@ records.calculer_tva()
             <field name="view_mode">list,form,pivot,graph</field>
             <field name="view_id" ref="is_view_out_invoice_tree"/>
             <field name="search_view_id" ref="is_view_account_invoice_filter"/>
-            <field name="domain">[]</field>
-            <field name="context">{}</field>
+            <field name="domain">[('move_type', 'in', ['out_invoice', 'out_refund'])]</field>
+            <field name="context">{'search_default_out_invoice': 1, 'default_move_type': 'out_invoice'}</field>
             <field name="limit">100</field>
         </record>
 
