@@ -14,6 +14,7 @@ Module Gestion Odoo 18 pour InfoSaône
         'base',
         'account',
         'l10n_fr',
+        'l10n_fr_account',
     ],
     'data' : [
         'security/ir.model.access.csv',
