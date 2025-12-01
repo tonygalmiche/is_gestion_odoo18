@@ -27,14 +27,12 @@ class AccountMove(models.Model):
         """
         res = super(AccountMove, self).read_group(domain, fields, groupby, offset=offset, limit=limit, orderby=orderby, lazy=lazy)
         for idx, item in enumerate(res):
-            print(idx,item)
             res[idx]['is_amount_untaxed_percent']=123
         return res
 
 
     def calculer_tva(self):
         for obj in self:
-            print(obj)
             obj.compute_taxes()
 
 

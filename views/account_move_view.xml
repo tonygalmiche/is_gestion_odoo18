@@ -22,6 +22,14 @@
                     <label for="is_date_paiement"/>
                     <field name="is_date_paiement" nolabel="1"/>
                 </xpath>
+
+                <xpath expr="//field[@name='invoice_line_ids']" position="attributes">
+                    <attribute name="widget"></attribute>
+                </xpath>
+
+
+
+
             </field>
         </record>
         <record id="is_view_out_invoice_tree" model="ir.ui.view">

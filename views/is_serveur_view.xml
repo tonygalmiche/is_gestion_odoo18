@@ -39,6 +39,7 @@
                 <field name="name"/>
                 <field name="partner_id"/>
                 <field name="fournisseur_id"/>
+                <field name="acces_ssh"/>
                 <field name="service_id"/>
                 <field name="renouvellement_auto"/>
                 <field name="systeme_id"/>
@@ -68,6 +69,7 @@
                 <field name="service_id"          optional="show"/>
                 <field name="systeme_id"          optional="show"/>
                 <field name="adresse_ip"          optional="show"/>
+                <field name="acces_ssh"           optional="show"/>
                 <field name="date_creation"       optional="show"/>
                 <field name="date_fin"            optional="hide"/>
                 <field name="renouvellement_auto" optional="hide"/>
@@ -87,29 +89,6 @@
     </record>
 
 
-   <!-- <record id="is_serveur_simplifie_list" model="ir.ui.view">
-        <field name="name">is_serveur_simplifie_list</field>
-        <field name="model">is.serveur</field>
-        <field name="arch" type="xml">
-            <list editable="bottom">
-                <field name="name"/>
-                <field name="partner_id"/>
-                <field name="fournisseur_id"/>
-                <field name="service_id"/>
-                <field name="date_creation"/>
-                <field name="systeme_id"/>
-                <field name="type_vps_id"/>
-            </list>
-        </field>
-    </record>
-    <record  id="is_serveur_simplifie_action" model="ir.actions.act_window">
-        <field name="name">Serveurs (Affichage simplifié)</field>
-        <field name="res_model">is.serveur</field>
-        <field name="limit">100</field>
-        <field name="view_mode">list,form</field>
-        <field name="view_id" ref="is_serveur_simplifie_list"/>
-    </record>
- -->
 
     <!-- is.systeme -->
     <record id="is_systeme_form" model="ir.ui.view">
