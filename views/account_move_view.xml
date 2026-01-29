@@ -15,6 +15,13 @@
                 <xpath expr="//button[@name='action_register_payment']" position="attributes">
                     <attribute name="invisible">1</attribute>
                 </xpath>
+                <!-- <xpath expr="//button[@name='action_register_payment']" position="after">
+                    <button name="action_generate_facturx_pdf" 
+                            type="object" 
+                            string="Générer Factur-X" 
+                            class="btn-primary"
+                            invisible="state != 'posted' or move_type not in ('out_invoice', 'out_refund')"/>
+                </xpath> -->
                 <xpath expr="//group[@id='header_left_group']/field[@name='partner_shipping_id']" position="before" >
                     <field name="is_affaire_id" domain="[('partner_id','=',partner_id)]"/>
                 </xpath>
@@ -26,9 +33,6 @@
                 <xpath expr="//field[@name='invoice_line_ids']" position="attributes">
                     <attribute name="widget"></attribute>
                 </xpath>
-
-
-
 
             </field>
         </record>
@@ -69,18 +73,6 @@
         </record>
 
 
-        <!-- <record id="is_account_invoice_action_view1" model="ir.actions.act_window.view">
-            <field eval="1" name="sequence"/>
-            <field name="view_mode">list</field>
-            <field name="view_id" ref="account.invoice_list_with_onboarding"/>
-            <field name="act_window_id" ref="is_account_invoice_action"/>
-        </record>
-        <record id="is_account_invoice_action_view2" model="ir.actions.act_window.view">
-            <field eval="2" name="sequence"/>
-            <field name="view_mode">form</field>
-            <field name="view_id" ref="account.invoice_form"/>
-            <field name="act_window_id" ref="is_account_invoice_action"/>
-        </record> -->
         <record  id="is_account_invoice_line_action" model="ir.actions.act_window">
             <field name="name">Lignes de factures</field>
             <field name="res_model">account.move.line</field>

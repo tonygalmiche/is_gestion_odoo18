@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vue formulaire du wizard -->
+    <record id="is_import_google_calendar_wizard_form_view" model="ir.ui.view">
+        <field name="name">is.import.google.calendar.wizard.form</field>
+        <field name="model">is.import.google.calendar.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Import Google Calendar">
+                <field name="state" invisible="1"/>
+                
+                <!-- État 1: Configuration des dates -->
+                <group invisible="state != 'config'">
+                    <group>
+                        <field name="date_debut"/>
+                    </group>
+                    <group>
+                        <field name="date_fin"/>
+                    </group>
+                </group>
+                
+                <!-- État 2: Autorisation OAuth -->
+                <group invisible="state != 'auth'">
+                    <div class="alert alert-info" role="alert">
+                        <h4>Autorisation requise</h4>
+                        <p>Pour accéder à votre Google Calendar, veuillez suivre ces étapes :</p>
+                        <ol>
+                            <li>Cliquez sur le lien ci-dessous pour ouvrir la page d'autorisation Google</li>
+                            <li>Connectez-vous avec votre compte Google</li>
+                            <li>Autorisez l'accès à votre calendrier</li>
+                            <li>Copiez le code d'autorisation affiché</li>
+                            <li>Collez-le dans le champ ci-dessous</li>
+                        </ol>
+                    </div>
+                    <group>
+                        <field name="auth_url" widget="url" string="1. Cliquez ici pour autoriser"/>
+                        <field name="auth_code" string="2. Collez le code ici" placeholder="Entrez le code d'autorisation..."/>
+                    </group>
+                    <group>
+                        <field name="date_debut" readonly="1"/>
+                        <field name="date_fin" readonly="1"/>
+                    </group>
+                </group>
+                
+                <footer>
+                    <button name="action_import" string="Importer" type="object" class="btn-primary" invisible="state != 'config'"/>
+                    <button name="action_validate_code" string="Valider et Importer" type="object" class="btn-primary" invisible="state != 'auth'"/>
+                    <button string="Annuler" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action pour ouvrir le wizard -->
+    <record id="is_import_google_calendar_wizard_action" model="ir.actions.act_window">
+        <field name="name">Import Google Calendar</field>
+        <field name="res_model">is.import.google.calendar.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>

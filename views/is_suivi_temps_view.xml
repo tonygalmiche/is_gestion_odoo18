@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vue formulaire -->
+    <record id="is_suivi_temps_form_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.form</field>
+        <field name="model">is.suivi.temps</field>
+        <field name="arch" type="xml">
+            <form string="Suivi du temps">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="date_debut"/>
+                            <field name="date_fin"/>
+                        </group>
+                        <group>
+                            <field name="duree" widget="float_time"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="description" placeholder="Description de l'activité..."/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Vue liste -->
+    <record id="is_suivi_temps_list_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.list</field>
+        <field name="model">is.suivi.temps</field>
+        <field name="arch" type="xml">
+            <list string="Suivi du temps">
+                <field name="date_debut"/>
+                <field name="date_fin"/>
+                <field name="description"/>
+                <field name="duree" widget="float_time" sum="Total"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Vue recherche -->
+    <record id="is_suivi_temps_search_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.search</field>
+        <field name="model">is.suivi.temps</field>
+        <field name="arch" type="xml">
+            <search string="Recherche Suivi du temps">
+                <field name="description"/>
+                <filter string="Aujourd'hui" name="today" domain="[('date_debut', '>=', datetime.datetime.combine(context_today(), datetime.time(0,0,0))), ('date_debut', '&lt;', datetime.datetime.combine(context_today() + relativedelta(days=1), datetime.time(0,0,0)))]"/>
+                <filter string="Cette semaine" name="this_week" domain="[('date_debut', '>=', (context_today() - relativedelta(weekday=0)).strftime('%Y-%m-%d')), ('date_debut', '&lt;', (context_today() + relativedelta(weekday=6, days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter string="Ce mois" name="this_month" domain="[('date_debut', '>=', context_today().strftime('%Y-%m-01')), ('date_debut', '&lt;', (context_today() + relativedelta(months=1)).strftime('%Y-%m-01'))]"/>
+                <separator/>
+                <group expand="0" string="Regrouper par">
+                    <filter string="Date" name="group_date" context="{'group_by': 'date_debut:day'}"/>
+                    <filter string="Mois" name="group_month" context="{'group_by': 'date_debut:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Vue pivot -->
+    <record id="is_suivi_temps_pivot_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.pivot</field>
+        <field name="model">is.suivi.temps</field>
+        <field name="arch" type="xml">
+            <pivot string="Suivi du temps">
+                <field name="date_debut" type="row" interval="month"/>
+                <field name="duree" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Vue graphique -->
+    <record id="is_suivi_temps_graph_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.graph</field>
+        <field name="model">is.suivi.temps</field>
+        <field name="arch" type="xml">
+            <graph string="Suivi du temps" type="bar">
+                <field name="date_debut" interval="day"/>
+                <field name="duree" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Vue calendrier -->
+    <record id="is_suivi_temps_calendar_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.calendar</field>
+        <field name="model">is.suivi.temps</field>
+        <field name="arch" type="xml">
+            <calendar string="Suivi du temps" date_start="date_debut" date_stop="date_fin" color="color" mode="month" event_open_popup="true">
+                <field name="description"/>
+                <field name="google_calendar_name"/>
+                <field name="duree" widget="float_time"/>
+            </calendar>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="is_suivi_temps_action" model="ir.actions.act_window">
+        <field name="name">Suivi du temps</field>
+        <field name="res_model">is.suivi.temps</field>
+        <field name="view_mode">list,calendar,form,pivot,graph</field>
+        <field name="search_view_id" ref="is_suivi_temps_search_view"/>
+        <field name="context">{}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Créer un nouveau suivi du temps
+            </p>
+            <p>
+                Enregistrez vos activités et suivez le temps passé.
+            </p>
+        </field>
+    </record>
+
+</odoo>
