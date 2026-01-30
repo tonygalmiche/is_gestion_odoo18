@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vue formulaire -->
+    <record id="is_suivi_temps_client_form_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.client.form</field>
+        <field name="model">is.suivi.temps.client</field>
+        <field name="arch" type="xml">
+            <form string="Suivi du temps par client">
+                <header>
+                    <button name="action_view_taches" type="object" string="Voir les tâches" class="oe_highlight" icon="fa-list"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="mois"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group>
+                            <field name="temps_passe"      widget="float_time"/>
+                            <field name="temps_facturable" widget="float_time"/>
+                            <field name="temps_facture"    widget="float_time"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="taches_effectuees" placeholder="Liste des tâches effectuées..." nolabel="1"/>
+                    </group>
+                    <group>
+                        <field name="commentaire" placeholder="Commentaires..." nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Vue liste -->
+    <record id="is_suivi_temps_client_list_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.client.list</field>
+        <field name="model">is.suivi.temps.client</field>
+        <field name="arch" type="xml">
+            <list string="Suivi du temps par client">
+                <field name="mois"/>
+                <field name="partner_id"/>
+                <field name="taches_effectuees" optional="hide"/>
+                <field name="temps_passe"      widget="float_time" sum="Total temps passé"/>
+                <field name="temps_facturable" widget="float_time" sum="Total temps facturable"/>
+                <field name="temps_facture"    widget="float_time" sum="Total temps facturé"/>
+                <field name="commentaire" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Vue recherche -->
+    <record id="is_suivi_temps_client_search_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.client.search</field>
+        <field name="model">is.suivi.temps.client</field>
+        <field name="arch" type="xml">
+            <search string="Recherche Suivi par client">
+                <field name="mois"/>
+                <field name="partner_id"/>
+                <field name="taches_effectuees"/>
+                <field name="commentaire"/>
+                <filter string="Ce mois" name="this_month" domain="[('mois', '=', context_today().strftime('%Y-%m'))]"/>
+                <filter string="Mois dernier" name="last_month" domain="[('mois', '=', (context_today() - relativedelta(months=1)).strftime('%Y-%m'))]"/>
+                <separator/>
+                <group expand="0" string="Regrouper par">
+                    <filter string="Client" name="group_client" context="{'group_by': 'partner_id'}"/>
+                    <filter string="Mois" name="group_mois" context="{'group_by': 'mois'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Vue pivot -->
+    <record id="is_suivi_temps_client_pivot_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.client.pivot</field>
+        <field name="model">is.suivi.temps.client</field>
+        <field name="arch" type="xml">
+            <pivot string="Suivi du temps par client">
+                <field name="partner_id" type="row"/>
+                <field name="mois" type="col"/>
+                <field name="temps_passe" type="measure"/>
+                <field name="temps_facturable" type="measure"/>
+                <field name="temps_facture" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Vue graphique -->
+    <record id="is_suivi_temps_client_graph_view" model="ir.ui.view">
+        <field name="name">is.suivi.temps.client.graph</field>
+        <field name="model">is.suivi.temps.client</field>
+        <field name="arch" type="xml">
+            <graph string="Suivi du temps par client" type="bar" stacked="True">
+                <field name="mois"/>
+                <field name="partner_id"/>
+                <field name="temps_passe" type="measure"/>
+                <field name="temps_facturable" type="measure"/>
+                <field name="temps_facture" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="is_suivi_temps_client_action" model="ir.actions.act_window">
+        <field name="name">Suivi par client</field>
+        <field name="res_model">is.suivi.temps.client</field>
+        <field name="view_mode">list,pivot,graph,form</field>
+        <field name="search_view_id" ref="is_suivi_temps_client_search_view"/>
+        <field name="context">{}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun suivi par client
+            </p>
+            <p>
+                Les fiches de suivi par client sont générées automatiquement lors de l'import Google Calendar.
+            </p>
+        </field>
+    </record>
+
+</odoo>

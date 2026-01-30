@@ -19,18 +19,35 @@
         sequence="20"
         action="is_affaire_action"
     />
+
+    <!-- Suivi du temps -->
+
     <menuitem
-        id="is_suivi_temps_menu"
+        id="is_suivi_temps_main_menu"
         name="Suivi du temps"
         parent="is_crm_main_menu"
         sequence="22"
         action="is_suivi_temps_action"
     />
     <menuitem
+        id="is_suivi_temps_menu"
+        name="Suivi du temps"
+        parent="is_suivi_temps_main_menu"
+        sequence="10"
+        action="is_suivi_temps_action"
+    />
+    <menuitem
+        id="is_suivi_temps_client_menu"
+        name="Suivi par client"
+        parent="is_suivi_temps_main_menu"
+        sequence="20"
+        action="is_suivi_temps_client_action"
+    />
+    <menuitem
         id="is_import_google_calendar_menu"
         name="Import Google Calendar"
-        parent="is_crm_main_menu"
-        sequence="23"
+        parent="is_suivi_temps_main_menu"
+        sequence="30"
         action="is_import_google_calendar_wizard_action"
     />
 
@@ -49,14 +66,6 @@
         sequence="10"
         action="is_serveur_action"
     />
-    <!-- <menuitem
-        id="is_serveur_simplifie_menu"
-        name="Serveurs (Affichage simplifié)"
-        parent="is_serveur_main_menu"
-        sequence="20"
-        action="is_serveur_simplifie_action"
-    />
- -->
     <menuitem
         id="is_systeme_menu"
         name="Systèmes"

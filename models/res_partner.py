@@ -14,6 +14,7 @@ class ResPartner(models.Model):
     is_date_debut_activite   = fields.Date("Date de début d'activité")
     is_categorie             = fields.Char("Catégorie")
     is_dynacase_id           = fields.Integer("Id Dynacase")
+    is_code_client           = fields.Char("Code client", help="Code client utilisé dans Google Calendar pour identifier le client")
 
 
 

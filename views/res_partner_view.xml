@@ -15,6 +15,7 @@
                 <field name="is_derniere_intervention"/>
             </field>
             <field name="property_account_position_id" position="after">
+                <field name="is_code_client"         invisible="not is_company"/>
                 <field name="is_siren"               invisible="not is_company"/>
                 <field name="is_forme_juridique"     invisible="not is_company"/>
                 <field name="is_date_debut_activite" invisible="not is_company"/>

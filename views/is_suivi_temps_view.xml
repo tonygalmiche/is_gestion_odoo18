@@ -12,13 +12,27 @@
                         <group>
                             <field name="date_debut"/>
                             <field name="date_fin"/>
+                            <field name="duree" widget="float_time"/>
                         </group>
                         <group>
-                            <field name="duree" widget="float_time"/>
+                            <field name="fait"/>
+                            <field name="partner_id"/>
+                            <field name="temps_facturable" widget="float_time"/>
                         </group>
                     </group>
                     <group>
                         <field name="description" placeholder="Description de l'activité..."/>
+                    </group>
+                    <group>
+                        <field name="description_simplifiee" readonly="1"/>
+                    </group>
+                    <group>
+                        <group>
+                            <field name="google_event_id" readonly="1" invisible="not google_event_id"/>
+                            <field name="google_calendar_id" readonly="1" invisible="not google_calendar_id"/>
+                            <field name="google_calendar_name" readonly="1" invisible="not google_calendar_name"/>
+                            <field name="google_calendar_url" widget="url" invisible="not google_calendar_url" string="📅 Ouvrir dans Google Calendar"/>
+                        </group>
                     </group>
                 </sheet>
             </form>
@@ -33,8 +47,16 @@
             <list string="Suivi du temps">
                 <field name="date_debut"/>
                 <field name="date_fin"/>
-                <field name="description"/>
+                <field name="fait"/>
+                <field name="partner_id"/>
+                <field name="description_simplifiee"/>
                 <field name="duree" widget="float_time" sum="Total"/>
+                <field name="temps_facturable" widget="float_time" sum="Total facturable"/>
+                <field name="description" optional="hide"/>
+                <field name="google_calendar_id" optional="hide"/>
+                <field name="google_calendar_name" optional="hide"/>
+                <field name="google_calendar_url" column_invisible="True"/>
+                <button name="action_open_google_calendar" type="object" icon="fa-calendar" title="Voir dans Google Calendar" invisible="not google_calendar_url"/>
             </list>
         </field>
     </record>
@@ -46,11 +68,18 @@
         <field name="arch" type="xml">
             <search string="Recherche Suivi du temps">
                 <field name="description"/>
-                <filter string="Aujourd'hui" name="today" domain="[('date_debut', '>=', datetime.datetime.combine(context_today(), datetime.time(0,0,0))), ('date_debut', '&lt;', datetime.datetime.combine(context_today() + relativedelta(days=1), datetime.time(0,0,0)))]"/>
-                <filter string="Cette semaine" name="this_week" domain="[('date_debut', '>=', (context_today() - relativedelta(weekday=0)).strftime('%Y-%m-%d')), ('date_debut', '&lt;', (context_today() + relativedelta(weekday=6, days=1)).strftime('%Y-%m-%d'))]"/>
-                <filter string="Ce mois" name="this_month" domain="[('date_debut', '>=', context_today().strftime('%Y-%m-01')), ('date_debut', '&lt;', (context_today() + relativedelta(months=1)).strftime('%Y-%m-01'))]"/>
+                <field name="description_simplifiee"/>
+                <field name="partner_id"/>
+                <filter string="Fait" name="fait" domain="[('fait', '=', True)]"/>
+                <filter string="À faire" name="a_faire" domain="[('fait', '=', False)]"/>
+                <separator/>
+                <filter string="Cette semaine"  name="cette_semaine"  domain="[('date_debut', '>=', (context_today() - relativedelta(weekday=0)).strftime('%Y-%m-%d')), ('date_debut', '&lt;', (context_today() + relativedelta(weekday=6, days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter string="Ce mois"        name="ce_mois"        domain="[('date_debut', '>=', context_today().strftime('%Y-%m-01')), ('date_debut', '&lt;', (context_today() + relativedelta(months=1)).strftime('%Y-%m-01'))]"/>
+                <filter string="Mois précédent" name="mois_precedent" domain="[('date_debut', '>=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-01')), ('date_debut', '&lt;', context_today().strftime('%Y-%m-01'))]"/>
                 <separator/>
                 <group expand="0" string="Regrouper par">
+                    <filter string="Client" name="group_client" context="{'group_by': 'partner_id'}"/>
+                    <filter string="Fait" name="group_fait" context="{'group_by': 'fait'}"/>
                     <filter string="Date" name="group_date" context="{'group_by': 'date_debut:day'}"/>
                     <filter string="Mois" name="group_month" context="{'group_by': 'date_debut:month'}"/>
                 </group>
@@ -64,8 +93,10 @@
         <field name="model">is.suivi.temps</field>
         <field name="arch" type="xml">
             <pivot string="Suivi du temps">
-                <field name="date_debut" type="row" interval="month"/>
+                <field name="partner_id" type="row"/>
+                <field name="date_debut" type="col" interval="month"/>
                 <field name="duree" type="measure"/>
+                <field name="temps_facturable" type="measure"/>
             </pivot>
         </field>
     </record>
@@ -88,9 +119,12 @@
         <field name="model">is.suivi.temps</field>
         <field name="arch" type="xml">
             <calendar string="Suivi du temps" date_start="date_debut" date_stop="date_fin" color="color" mode="month" event_open_popup="true">
-                <field name="description"/>
+                <field name="description_simplifiee"/>
+                <field name="partner_id"/>
+                <field name="fait"/>
                 <field name="google_calendar_name"/>
                 <field name="duree" widget="float_time"/>
+                <field name="temps_facturable" widget="float_time"/>
             </calendar>
         </field>
     </record>

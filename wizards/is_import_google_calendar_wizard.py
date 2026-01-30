@@ -198,6 +198,7 @@ class IsImportGoogleCalendarWizard(models.TransientModel):
                     for event in events_result.get('items', []):
                         event['_calendar_name'] = calendar_name
                         event['_calendar_color'] = calendar_color
+                        event['_calendar_id'] = calendar_id
                         events.append(event)
                 except Exception as e:
                     _logger.warning(f"Erreur lors de la récupération du calendrier '{calendar_name}': {e}")
@@ -232,13 +233,31 @@ class IsImportGoogleCalendarWizard(models.TransientModel):
                         date_debut = datetime.strptime(start_str, '%Y-%m-%d')
                         date_fin = datetime.strptime(end_str, '%Y-%m-%d')
                     
+                    # Parser la description pour extraire les informations
+                    description_orig = event.get('summary', 'Sans titre')
+                    suivi_temps_obj = suivi_temps_model.browse()  # Instance vide pour appeler la méthode
+                    parsed_info = suivi_temps_obj.parse_description(description_orig)
+                    
+                    # Chercher le client par son code
+                    partner_id = False
+                    if parsed_info['code_client']:
+                        partner = self.env['res.partner'].search([
+                            ('is_code_client', '=ilike', parsed_info['code_client'])
+                        ], limit=1)
+                        if partner:
+                            partner_id = partner.id
+                    
                     vals = {
                         'date_debut': date_debut,
                         'date_fin': date_fin,
-                        'description': event.get('summary', 'Sans titre'),
+                        'description': description_orig,
                         'google_event_id': google_event_id,
+                        'google_calendar_id': event.get('_calendar_id', ''),
                         'google_calendar_name': event.get('_calendar_name', ''),
                         'color': event.get('_calendar_color', 1),
+                        'fait': parsed_info['fait'],
+                        'partner_id': partner_id,
+                        'temps_facturable': parsed_info['temps_facturable'],
                     }
                     
                     # Vérifier si l'événement existe déjà
@@ -254,6 +273,9 @@ class IsImportGoogleCalendarWizard(models.TransientModel):
                     _logger.warning(f"Erreur lors de la création de l'événement '{event.get('summary', '')}': {e}")
                     continue
         
+        # Générer les fiches de suivi du temps par client
+        self._generate_client_summary(created_ids + updated_ids)
+        
         # Afficher la vue liste avec les événements créés ou mis à jour
         all_ids = created_ids + updated_ids
         return {
@@ -264,3 +286,75 @@ class IsImportGoogleCalendarWizard(models.TransientModel):
             'domain': [('id', 'in', all_ids)],
             'target': 'current',
         }
+    
+    def _generate_client_summary(self, suivi_temps_ids):
+        """Générer ou mettre à jour les fiches de suivi du temps par client"""
+        if not suivi_temps_ids:
+            return
+        
+        suivi_temps_model = self.env['is.suivi.temps']
+        suivi_temps_client_model = self.env['is.suivi.temps.client']
+        
+        # Récupérer tous les enregistrements importés pour identifier les clients et mois concernés
+        suivi_temps_records = suivi_temps_model.browse(suivi_temps_ids)
+        
+        # Identifier les combinaisons (client, mois) concernées
+        client_month_keys = set()
+        for record in suivi_temps_records:
+            if record.partner_id and record.date_debut:
+                mois = record.date_debut.strftime('%Y-%m')
+                client_month_keys.add((record.partner_id.id, mois))
+        
+        # Pour chaque combinaison (client, mois), récupérer TOUTES les tâches
+        for partner_id, mois in client_month_keys:
+            # Calculer les dates de début et fin du mois
+            mois_debut = datetime.strptime(f"{mois}-01", '%Y-%m-%d')
+            if mois_debut.month == 12:
+                mois_fin = datetime(mois_debut.year + 1, 1, 1)
+            else:
+                mois_fin = datetime(mois_debut.year, mois_debut.month + 1, 1)
+            
+            # Rechercher toutes les tâches du client pour ce mois
+            all_records = suivi_temps_model.search([
+                ('partner_id', '=', partner_id),
+                ('date_debut', '>=', mois_debut),
+                ('date_debut', '<', mois_fin)
+            ], order='date_debut')
+            
+            # Construire les données
+            taches = []
+            temps_facturable = 0.0
+            temps_passe = 0.0
+            
+            for record in all_records:
+                if record.description_simplifiee:
+                    jour_mois = record.date_debut.strftime('%d/%m')
+                    tache_formatee = f"{jour_mois} - {record.description_simplifiee}"
+                    taches.append(tache_formatee)
+                
+                temps_facturable += record.temps_facturable or 0.0
+                temps_passe += record.duree or 0.0
+            
+            # Créer la liste des tâches avec retour à la ligne
+            taches_text = '\n'.join(taches)
+            
+            vals = {
+                'partner_id': partner_id,
+                'mois': mois,
+                'taches_effectuees': taches_text,
+                'temps_facturable': temps_facturable,
+                'temps_passe': temps_passe,
+            }
+            
+            # Vérifier si la fiche existe déjà
+            existing = suivi_temps_client_model.search([
+                ('partner_id', '=', partner_id),
+                ('mois', '=', mois)
+            ], limit=1)
+            
+            if existing:
+                # Mettre à jour la fiche existante
+                existing.write(vals)
+            else:
+                # Créer une nouvelle fiche
+                suivi_temps_client_model.create(vals)

@@ -2,6 +2,7 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_is_affaire,access_is_affaire,model_is_affaire,base.group_user,1,1,1,1
 access_is_serveur,access_is_serveur,model_is_serveur,base.group_user,1,1,1,1
 access_is_suivi_temps,access_is_suivi_temps,model_is_suivi_temps,base.group_user,1,1,1,1
+access_is_suivi_temps_client,access_is_suivi_temps_client,model_is_suivi_temps_client,base.group_user,1,1,1,1
 access_is_import_google_calendar_wizard,access_is_import_google_calendar_wizard,model_is_import_google_calendar_wizard,base.group_user,1,1,1,1
 access_is_google_calendar_config,access_is_google_calendar_config,model_is_google_calendar_config,base.group_user,1,1,1,1
 access_is_systeme,access_is_systeme,model_is_systeme,base.group_user,1,1,1,1
