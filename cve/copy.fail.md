@@ -299,6 +299,23 @@ Cette opération n'affecte pas dm-crypt/LUKS, SSH, kTLS, IPsec ni OpenSSL en con
 
 > Commande de vérification universelle : `dpkg -l | grep linux-image`
 
+## Statut Ubuntu
+
+Source : [ubuntu.com/security/CVE-2026-31431](https://ubuntu.com/security/CVE-2026-31431)
+
+| Version | Statut | Action requise |
+|---|---|---|
+| 26.04 LTS Resolute | **Non affecté** (noyau 7.x) | Aucune |
+| 25.10 Questing | **Vulnérable** | `apt update && apt upgrade` + reboot |
+| 24.04 LTS Noble | **Vulnérable** | `apt update && apt upgrade` + reboot |
+| 22.04 LTS Jammy | **Vulnérable** | `apt update && apt upgrade` + reboot |
+| 20.04 LTS Focal | **Vulnérable** | `apt update && apt upgrade` + reboot |
+| 18.04 LTS Bionic | Fin de support standard | Non maintenu |
+
+**Ubuntu 26.04** : le patch est inclus dans le noyau 7.0 par construction — aucune action requise.
+
+**Ubuntu 22.04 / 24.04 / 25.10** : Canonical a publié un contournement immédiat via le paquet `kmod` (USN-8226-1, 30 avril 2026) qui bloque le module `algif_aead` sans reboot. Un noyau corrigé suivra via `apt upgrade`.
+
 ## Références
 
 - https://copy.fail
