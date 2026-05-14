@@ -110,7 +110,8 @@
                 <field name="grafana"             optional="hide"/>
                 <field name="sauvegarde"          optional="hide"/>
                 <field name="commentaire"         optional="hide"/>
-                <field name="nb_actions"          optional="show"/>
+                <field name="date_debut_maintenance" optional="show"/>
+                <field name="nb_actions"           optional="show"/>
             </list>
         </field>
     </record>

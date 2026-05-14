@@ -18,7 +18,10 @@ def s(txt, lg=0):
 
 
 serveurs = models.execute_kw(DB, uid, PASSWORD, 'is.serveur', 'search_read',
-    [[('active', '=', True)]], {
+    [[
+        ('active', '=', True),
+        ('date_debut_maintenance','!=',False),
+    ]], {
         'fields': ['name', 'adresse_ip', 'partner_id', 'commentaire', 'acces_ssh', 'systeme_id'],
         'limit': 100,
         'order': 'systeme_id,partner_id',

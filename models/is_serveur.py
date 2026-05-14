@@ -29,7 +29,8 @@ class IsServeur(models.Model):
     grafana             = fields.Boolean("Grafana", default=False, tracking=True)
     sauvegarde          = fields.Boolean("Vérification sauvegarde", default=True, tracking=True)
     active              = fields.Boolean("Actif"  , default=True, tracking=True)
-    action_ids          = fields.One2many('is.serveur.action', 'serveur_id', "Actions")
+    action_ids             = fields.One2many('is.serveur.action', 'serveur_id', "Actions")
+    date_debut_maintenance = fields.Date("Date maintenance", help="Date début contrat maintenance", related='partner_id.is_date_debut_maintenance', store=True)
     nb_actions          = fields.Integer("Nb actions", compute='_compute_nb_actions', store=True)
 
     @api.depends('action_ids')
