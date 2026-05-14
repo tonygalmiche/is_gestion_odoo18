@@ -33,6 +33,11 @@ Module Gestion Odoo 18 pour InfoSaône
         "report/report_templates.xml",
         "report/report_invoice.xml",
     ],
+    "assets": {
+        "web.assets_backend": [
+            "is_gestion_odoo18/static/src/**/*",
+        ],
+    },
     "installable": True,
     "application": True,
     "license": "LGPL-3",

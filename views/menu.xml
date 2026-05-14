@@ -67,6 +67,13 @@
         action="is_serveur_action"
     />
     <menuitem
+        id="is_serveur_action_menu"
+        name="Actions sur les serveurs"
+        parent="is_serveur_main_menu"
+        sequence="20"
+        action="is_serveur_action_action"
+    />
+    <menuitem
         id="is_systeme_menu"
         name="Systèmes"
         parent="is_serveur_main_menu"
