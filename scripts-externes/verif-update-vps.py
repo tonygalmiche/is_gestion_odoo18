@@ -19,18 +19,20 @@ parser.add_argument('filtre',         nargs='?', default='', help='Filtre sur le
 parser.add_argument('--update',       action='store_true', help='Lancer apt-get update')
 parser.add_argument('--dist-upgrade', action='store_true', help='Lancer apt-get dist-upgrade')
 parser.add_argument('--reboot',       action='store_true', help='Redémarrer le serveur après le dist-upgrade (implique --dist-upgrade)')
+parser.add_argument('--dirty-frag',   action='store_true', help='Vérifier/appliquer la mitigation DirtyFrag (CVE-2026-43284/43500)')
 parser.add_argument('--add-action',   action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
 args    = parser.parse_args()
 
-if not args.update and not args.dist_upgrade and not args.reboot:
+if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag:
     parser.print_help()
     sys.exit(0)
 
-filtre     = args.filtre.lower()
-do_update  = args.update
-upgrade    = args.dist_upgrade or args.reboot
-reboot     = args.reboot
-add_action = args.add_action
+filtre      = args.filtre.lower()
+do_update   = args.update
+upgrade     = args.dist_upgrade or args.reboot
+reboot      = args.reboot
+dirty_frag  = args.dirty_frag
+add_action  = args.add_action
 
 if reboot:
     action_label = 'apt-get dist-upgrade + reboot'
@@ -38,6 +40,8 @@ elif upgrade:
     action_label = 'apt-get dist-upgrade'
 elif do_update:
     action_label = 'apt-get update'
+elif dirty_frag:
+    action_label = 'Mitigation DirtyFrag'
 else:
     action_label = 'Vérification mises à jour'
 
@@ -49,15 +53,41 @@ def s(txt, lg=0):
     return txt
 
 
+def save_action(serveur_id, label, lines):
+    """Crée ou met à jour une is.serveur.action pour aujourd'hui (même serveur + même action)."""
+    if not add_action or not lines:
+        return
+    today = datetime.now().strftime('%Y-%m-%d')
+    vals  = {
+        'serveur_id': serveur_id,
+        'date_heure': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+        'action':     label,
+        'commentaire': '\n'.join(lines),
+    }
+    existants = models.execute_kw(db, uid, password, 'is.serveur.action', 'search',
+        [[('serveur_id', '=', serveur_id),
+          ('action',     '=', label),
+          ('date_heure', '>=', today + ' 00:00:00'),
+          ('date_heure', '<=', today + ' 23:59:59')]])
+    if existants:
+        models.execute_kw(db, uid, password, 'is.serveur.action', 'write', [existants, vals])
+    else:
+        models.execute_kw(db, uid, password, 'is.serveur.action', 'create', [vals])
+
+
 serveurs = models.execute_kw(db, uid, password, 'is.serveur', 'search_read',
-    [[('active', '=', True)]],
+    [[
+        ('active', '=', True),
+        ('upgrade_auto', '=', True),
+        ('date_debut_maintenance','!=',False),
+    ]],
     {
         'fields': ['id', 'name', 'adresse_ip', 'partner_id', 'acces_ssh', 'systeme_id'],
         'limit': 200,
         'order': 'partner_id,name',
     })
 
-print(s('Client', 30), s('SSH', 40), s('Paquets à mettre à jour', 0))
+print(s('Client', 30), s('SSH', 40), s('Résultat', 0))
 print('-' * 120)
 
 for serveur in serveurs:
@@ -71,7 +101,54 @@ for serveur in serveurs:
     if filtre and filtre not in client.lower() and filtre not in nom.lower():
         continue
 
-    # apt-get update puis liste des paquets upgradables
+    # --- DirtyFrag (CVE-2026-43284 / CVE-2026-43500) ---
+    # Élévation de privilèges locale (LPE) dans le noyau Linux via algif_aead.
+    # Mitigation : bloquer le chargement des modules esp4, esp6 et rxrpc via modprobe,
+    # décharger ces modules s'ils sont déjà en mémoire, puis vider le page cache
+    # pour éliminer toute page potentiellement corrompue.
+    # Ref : https://github.com/V4bel/dirtyfrag
+    if dirty_frag:
+        commentaire_lines = []
+        cmd_check = (
+            "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
+            "'test -f /etc/modprobe.d/dirtyfrag.conf && echo OK || echo ABSENT') 2>&1" % acces_ssh
+        )
+        etat = os.popen(cmd_check).read().strip()
+        if etat not in ('OK', 'ABSENT'):
+            print(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % (etat or 'pas de réponse'))
+            continue
+        if etat == 'OK':
+            print(s(client, 30), s(acces_ssh, 40), 'DirtyFrag : mitigation déjà appliquée')
+            commentaire_lines.append('Mitigation déjà présente')
+        else:
+            print(s(client, 30), s(acces_ssh, 40), 'DirtyFrag : application de la mitigation...')
+            cmd_fix = (
+                "(ssh -o ConnectTimeout=30 -o BatchMode=yes %s "
+                "\"sh -c \\\"printf 'install esp4 /bin/false\\\\ninstall esp6 /bin/false\\\\ninstall rxrpc /bin/false\\\\n' "
+                "> /etc/modprobe.d/dirtyfrag.conf; rmmod esp4 esp6 rxrpc 2>/dev/null; "
+                "echo 3 | tee /proc/sys/vm/drop_caches > /dev/null; true\\\"\") 2>&1" % acces_ssh
+            )
+            out = os.popen(cmd_fix).read().strip()
+            # Vérifier que le fichier a bien été créé
+            cmd_verif = (
+                "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
+                "'test -f /etc/modprobe.d/dirtyfrag.conf && echo OK || echo ECHEC') 2>&1" % acces_ssh
+            )
+            verif = os.popen(cmd_verif).read().strip()
+            if verif == 'OK':
+                print(' ' * 62, '>>> Mitigation appliquée avec succès')
+                commentaire_lines.append('Mitigation appliquée')
+            else:
+                print(' ' * 62, '>>> ECHEC application mitigation')
+                if out:
+                    print(' ' * 62, out)
+                commentaire_lines.append('ECHEC mitigation')
+                if out:
+                    commentaire_lines.append(out)
+        save_action(serveur['id'], action_label, commentaire_lines)
+        continue
+
+    # --- apt update / upgrade ---
     # Les lignes de paquets contiennent toujours un '/' (ex: bash/bookworm ...)
     if do_update:
         cmd_upd = (
@@ -90,6 +167,17 @@ for serveur in serveurs:
         )
     lines   = os.popen(cmd).read().splitlines()
     paquets = [l.strip() for l in lines if '/' in l]  # seules les vraies lignes de paquets
+
+    # Détecter les erreurs SSH (connexion refusée, timeout, etc.)
+    ssh_error = next((l.strip() for l in lines if l.lower().startswith('ssh:')
+                      or 'timed out' in l.lower()
+                      or 'no route to host' in l.lower()
+                      or 'connection refused' in l.lower()
+                      or 'permission denied' in l.lower()), None)
+    if ssh_error:
+        print(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
+        save_action(serveur['id'], action_label, ['ERREUR SSH : %s' % ssh_error])
+        continue
 
     commentaire_lines = []
     if not paquets:
@@ -157,19 +245,4 @@ for serveur in serveurs:
                 print(' ' * 62, '>>> Reboot lancé')
                 commentaire_lines.append('Reboot lancé')
 
-    if add_action and commentaire_lines:
-        today     = datetime.now().strftime('%Y-%m-%d')
-        vals      = {
-            'serveur_id': serveur['id'],
-            'date_heure': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-            'action':     action_label,
-            'commentaire': '\n'.join(commentaire_lines),
-        }
-        existants = models.execute_kw(db, uid, password, 'is.serveur.action', 'search',
-            [[('serveur_id', '=', serveur['id']),
-              ('date_heure', '>=', today + ' 00:00:00'),
-              ('date_heure', '<=', today + ' 23:59:59')]])
-        if existants:
-            models.execute_kw(db, uid, password, 'is.serveur.action', 'write', [existants, vals])
-        else:
-            models.execute_kw(db, uid, password, 'is.serveur.action', 'create', [vals])
+    save_action(serveur['id'], action_label, commentaire_lines)

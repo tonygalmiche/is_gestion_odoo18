@@ -35,6 +35,7 @@
                             <field name="type_vps_id"/>
                             <field name="grafana"/>
                             <field name="sauvegarde"/>
+                            <field name="upgrade_auto"/>
                             <field name="renouvellement_auto"/>
                         </group>
                     </group>
@@ -109,6 +110,7 @@
                 <field name="type_vps_id"         optional="show"/>
                 <field name="grafana"             optional="hide"/>
                 <field name="sauvegarde"          optional="hide"/>
+                <field name="upgrade_auto"        optional="show"/>
                 <field name="commentaire"         optional="hide"/>
                 <field name="date_debut_maintenance" optional="show"/>
                 <field name="nb_actions"           optional="show"/>

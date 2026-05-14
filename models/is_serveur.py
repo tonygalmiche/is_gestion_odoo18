@@ -30,6 +30,7 @@ class IsServeur(models.Model):
     sauvegarde          = fields.Boolean("Vérification sauvegarde", default=True, tracking=True)
     active              = fields.Boolean("Actif"  , default=True, tracking=True)
     action_ids             = fields.One2many('is.serveur.action', 'serveur_id', "Actions")
+    upgrade_auto           = fields.Boolean("Upgrade automatique autorisé", default=True, tracking=True)
     date_debut_maintenance = fields.Date("Date maintenance", help="Date début contrat maintenance", related='partner_id.is_date_debut_maintenance', store=True)
     nb_actions          = fields.Integer("Nb actions", compute='_compute_nb_actions', store=True)
 
