@@ -23,6 +23,7 @@ Module Gestion Odoo 18 pour InfoSaône
         "security/ir.model.access.csv",
         "views/is_affaire_view.xml",
         "views/is_serveur_view.xml",
+        "views/is_cve_view.xml",
         "views/is_suivi_temps_view.xml",
         "views/is_suivi_temps_client_view.xml",
         "wizards/is_import_google_calendar_wizard_view.xml",

@@ -7,4 +7,5 @@ from . import is_suivi_temps
 from . import is_suivi_temps_client
 from . import is_google_calendar_config
 from . import account_move
+from . import is_cve
 

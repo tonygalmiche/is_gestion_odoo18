@@ -96,6 +96,14 @@
     />
 
 
+    <menuitem
+        id="is_cve_menu"
+        name="CVE"
+        parent="is_crm_main_menu"
+        sequence="25"
+        action="is_cve_action"
+    />
+
 
 
 
