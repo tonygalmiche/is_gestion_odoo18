@@ -24,6 +24,7 @@ class IsServeur(models.Model):
     acces_ssh           = fields.Char("Accès SSH", tracking=True)
     mot_de_passe        = fields.Char("Mot de passe")
     systeme_id          = fields.Many2one('is.systeme', "Système", required=True, tracking=True)
+    info_systeme        = fields.Char("Info système", tracking=True)
     type_vps_id         = fields.Many2one('is.type.vps', "Type de VPS", tracking=True)
     commentaire         = fields.Text("Commentaire")
     grafana             = fields.Boolean("Grafana", default=False, tracking=True)

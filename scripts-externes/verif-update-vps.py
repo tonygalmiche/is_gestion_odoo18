@@ -20,10 +20,11 @@ parser.add_argument('--update',       action='store_true', help='Lancer apt-get 
 parser.add_argument('--dist-upgrade', action='store_true', help='Lancer apt-get dist-upgrade')
 parser.add_argument('--reboot',       action='store_true', help='Redémarrer le serveur après le dist-upgrade (implique --dist-upgrade)')
 parser.add_argument('--dirty-frag',   action='store_true', help='Vérifier/appliquer la mitigation DirtyFrag (CVE-2026-43284/43500)')
+parser.add_argument('--get-system',   action='store_true', help='Récupérer le système, la version, le noyau et sa date de mise à jour')
 parser.add_argument('--add-action',   action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
 args    = parser.parse_args()
 
-if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag:
+if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system:
     parser.print_help()
     sys.exit(0)
 
@@ -32,6 +33,7 @@ do_update   = args.update
 upgrade     = args.dist_upgrade or args.reboot
 reboot      = args.reboot
 dirty_frag  = args.dirty_frag
+get_system  = args.get_system
 add_action  = args.add_action
 
 if reboot:
@@ -42,6 +44,8 @@ elif do_update:
     action_label = 'apt-get update'
 elif dirty_frag:
     action_label = 'Mitigation DirtyFrag'
+elif get_system:
+    action_label = 'Récupération info système'
 else:
     action_label = 'Vérification mises à jour'
 
@@ -99,6 +103,43 @@ for serveur in serveurs:
     nom       = serveur['name']
 
     if filtre and filtre not in client.lower() and filtre not in nom.lower():
+        continue
+
+    # --- Récupération info système ---
+    if get_system:
+        cmd_sys = (
+            "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
+            "'echo SYS:$(lsb_release -si 2>/dev/null); "
+            "echo VER:$(lsb_release -sc 2>/dev/null); "
+            "echo KER:$(uname -r); "
+            "echo KDT:$(date -r /boot/vmlinuz-$(uname -r) +%%Y-%%m-%%d 2>/dev/null)') 2>&1" % acces_ssh
+        )
+        out = os.popen(cmd_sys).read().strip()
+        infos = {}
+        for line in out.splitlines():
+            if ':' in line:
+                key, _, val = line.partition(':')
+                infos[key.strip()] = val.strip()
+        sys_name   = infos.get('SYS', 'N/A')
+        sys_ver    = infos.get('VER', 'N/A')
+        kernel     = infos.get('KER', 'N/A')
+        kernel_dt  = infos.get('KDT', 'N/A')
+        ssh_error  = next((l.strip() for l in out.splitlines()
+                           if l.lower().startswith('ssh:')
+                           or 'timed out' in l.lower()
+                           or 'no route to host' in l.lower()
+                           or 'connection refused' in l.lower()
+                           or 'permission denied' in l.lower()), None)
+        if ssh_error:
+            print(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
+        else:
+            kernel_str   = '%s(%s)' % (kernel, kernel_dt) if kernel_dt and kernel_dt != 'N/A' else kernel
+            info_systeme = '%s %s - noyau: %s' % (sys_name, sys_ver, kernel_str)
+            print(s(client, 30), s(acces_ssh, 40),
+                  '%-10s %-12s  noyau: %s' % (sys_name, sys_ver, kernel_str))
+            models.execute_kw(db, uid, password, 'is.serveur', 'write',
+                              [[serveur['id']], {'info_systeme': info_systeme}])
+            save_action(serveur['id'], action_label, [info_systeme])
         continue
 
     # --- DirtyFrag (CVE-2026-43284 / CVE-2026-43500) ---
