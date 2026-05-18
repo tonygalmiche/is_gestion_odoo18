@@ -6,6 +6,8 @@ import os
 import sys
 import argparse
 import time
+import urllib.request
+import ssl
 from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/../../../scripts-externes')
 from config import URL as url, DB as db, USERNAME as username, PASSWORD as password
@@ -20,21 +22,25 @@ parser.add_argument('--update',       action='store_true', help='Lancer apt-get 
 parser.add_argument('--dist-upgrade', action='store_true', help='Lancer apt-get dist-upgrade')
 parser.add_argument('--reboot',       action='store_true', help='Redémarrer le serveur après le dist-upgrade (implique --dist-upgrade)')
 parser.add_argument('--dirty-frag',   action='store_true', help='Vérifier/appliquer la mitigation DirtyFrag (CVE-2026-43284/43500)')
-parser.add_argument('--get-system',   action='store_true', help='Récupérer le système, la version, le noyau et sa date de mise à jour')
-parser.add_argument('--add-action',   action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
+parser.add_argument('--get-system',            action='store_true', help='Récupérer le système, la version, le noyau et sa date de mise à jour')
+parser.add_argument('--get-database-manager',  action='store_true', help='Vérifier si l\'accès au gestionnaire de base de données Odoo est bloqué')
+parser.add_argument('--get-reset-password',    action='store_true', help='Vérifier si la page de réinitialisation du mot de passe Odoo est accessible')
+parser.add_argument('--add-action',            action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
 args    = parser.parse_args()
 
-if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system:
+if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system and not args.get_database_manager and not args.get_reset_password:
     parser.print_help()
     sys.exit(0)
 
-filtre      = args.filtre.lower()
-do_update   = args.update
-upgrade     = args.dist_upgrade or args.reboot
-reboot      = args.reboot
-dirty_frag  = args.dirty_frag
-get_system  = args.get_system
-add_action  = args.add_action
+filtre          = args.filtre.lower()
+do_update       = args.update
+upgrade         = args.dist_upgrade or args.reboot
+reboot          = args.reboot
+dirty_frag      = args.dirty_frag
+get_system      = args.get_system
+get_db_manager    = args.get_database_manager
+get_reset_passwd  = args.get_reset_password
+add_action        = args.add_action
 
 if reboot:
     action_label = 'apt-get dist-upgrade + reboot'
@@ -46,8 +52,27 @@ elif dirty_frag:
     action_label = 'Mitigation DirtyFrag'
 elif get_system:
     action_label = 'Récupération info système'
+elif get_db_manager:
+    action_label = 'Vérification gestionnaire BDD'
+elif get_reset_passwd:
+    action_label = 'Vérification reset password'
 else:
     action_label = 'Vérification mises à jour'
+
+
+def fetch_https(nom, path):
+    """Retourne (content, http_code) ou (None, None) en cas d'erreur réseau."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    req = urllib.request.Request('https://%s%s' % (nom, path), headers={'User-Agent': 'Mozilla/5.0'})
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+            return resp.read().decode('utf-8', errors='replace'), resp.getcode()
+    except urllib.error.HTTPError as e:
+        return e.read().decode('utf-8', errors='replace'), e.code
+    except Exception as e:
+        return None, str(e)
 
 
 def s(txt, lg=0):
@@ -79,31 +104,68 @@ def save_action(serveur_id, label, lines):
         models.execute_kw(db, uid, password, 'is.serveur.action', 'create', [vals])
 
 
-serveurs = models.execute_kw(db, uid, password, 'is.serveur', 'search_read',
-    [[
+if get_db_manager or get_reset_passwd:
+    _domain = [('active', '=', True), ('service_id.name', 'ilike', 'odoo')]
+    _fields = ['id', 'name', 'adresse_ip', 'partner_id', 'service_id']
+else:
+    _domain = [
         ('active', '=', True),
         ('upgrade_auto', '=', True),
-        ('date_debut_maintenance','!=',False),
-    ]],
+        ('date_debut_maintenance', '!=', False),
+    ]
+    _fields = ['id', 'name', 'adresse_ip', 'partner_id', 'acces_ssh', 'systeme_id']
+
+serveurs = models.execute_kw(db, uid, password, 'is.serveur', 'search_read',
+    [_domain],
     {
-        'fields': ['id', 'name', 'adresse_ip', 'partner_id', 'acces_ssh', 'systeme_id'],
+        'fields': _fields,
         'limit': 200,
-        'order': 'partner_id,name',
+        'order': 'service_id,partner_id,name' if (get_db_manager or get_reset_passwd) else 'partner_id,name',
     })
 
 print(s('Client', 30), s('SSH', 40), s('Résultat', 0))
 print('-' * 120)
 
 for serveur in serveurs:
-    if not serveur['acces_ssh']:
-        continue
-
-    acces_ssh = serveur['acces_ssh']
-    client    = serveur['partner_id'] and serveur['partner_id'][1] or ''
-    nom       = serveur['name']
+    client = serveur['partner_id'] and serveur['partner_id'][1] or ''
+    nom    = serveur['name']
 
     if filtre and filtre not in client.lower() and filtre not in nom.lower():
         continue
+
+    # --- Vérification URL Odoo (database manager / reset password) ---
+    if get_db_manager or get_reset_passwd:
+        service_name = serveur.get('service_id') and serveur['service_id'][1] or ''
+        if get_db_manager:
+            path = '/web/database/manager'
+        else:
+            path = '/web/reset_password'
+        content, http_code = fetch_https(nom, path)
+        if content is None:
+            print(s(client, 30), s(nom, 40), '[%s] ERREUR : %s' % (service_name, http_code))
+            continue
+        if get_db_manager:
+            if 'disabled by the administrator' in content or 'has been disabled' in content:
+                statut = 'BLOQUÉ (disabled by administrator)'
+            elif 'database' in content.lower() and 'manager' in content.lower():
+                statut = 'OUVERT - accès non protégé !'
+            else:
+                statut = 'Réponse HTTP %s (contenu inattendu)' % http_code
+        else:
+            if http_code in (403, 404) or 'not found' in content.lower():
+                statut = 'BLOQUÉ (HTTP %s)' % http_code
+            elif 'reset' in content.lower() and 'password' in content.lower():
+                statut = 'OUVERT - accès non protégé !'
+            else:
+                statut = 'Réponse HTTP %s (contenu inattendu)' % http_code
+        print(s(client, 30), s(nom, 40), '[%s] %s' % (service_name, statut))
+        save_action(serveur['id'], action_label, [statut])
+        continue
+
+    if not serveur.get('acces_ssh'):
+        continue
+
+    acces_ssh = serveur['acces_ssh']
 
     # --- Récupération info système ---
     if get_system:
