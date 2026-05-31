@@ -203,6 +203,7 @@
                 <field name="systeme_id"/>
                 <field name="action"/>
                 <field name="commentaire"/>
+                <filter name="today" string="Aujourd'hui" domain="[('date_heure','&gt;=',context_today().strftime('%Y-%m-%d')),('date_heure','&lt;',(context_today()+datetime.timedelta(days=1)).strftime('%Y-%m-%d'))]"/>
                 <group expand="0" string="Group By...">
                     <filter name="group_by_partner_id" string="Client"  context="{'group_by': 'partner_id'}"/>
                     <filter name="group_by_service_id" string="Service" context="{'group_by': 'service_id'}"/>
