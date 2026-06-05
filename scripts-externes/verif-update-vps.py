@@ -26,9 +26,10 @@ parser.add_argument('--get-system',            action='store_true', help='Récup
 parser.add_argument('--get-database-manager',  action='store_true', help='Vérifier si l\'accès au gestionnaire de base de données Odoo est bloqué')
 parser.add_argument('--get-reset-password',    action='store_true', help='Vérifier si la page de réinitialisation du mot de passe Odoo est accessible')
 parser.add_argument('--add-action',            action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
+parser.add_argument('--script',                type=str, help='Copier et exécuter un script local sur les serveurs (ex: CIFSwitch.sh)')
 args    = parser.parse_args()
 
-if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system and not args.get_database_manager and not args.get_reset_password:
+if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system and not args.get_database_manager and not args.get_reset_password and not args.script:
     parser.print_help()
     sys.exit(0)
 
@@ -41,6 +42,7 @@ get_system      = args.get_system
 get_db_manager    = args.get_database_manager
 get_reset_passwd  = args.get_reset_password
 add_action        = args.add_action
+script_path       = args.script
 
 if reboot:
     action_label = 'apt-get dist-upgrade + reboot'
@@ -56,6 +58,8 @@ elif get_db_manager:
     action_label = 'Vérification gestionnaire BDD'
 elif get_reset_passwd:
     action_label = 'Vérification reset password'
+elif script_path:
+    action_label = 'Exécution script : %s' % script_path
 else:
     action_label = 'Vérification mises à jour'
 
@@ -104,24 +108,33 @@ def save_action(serveur_id, label, lines):
         models.execute_kw(db, uid, password, 'is.serveur.action', 'create', [vals])
 
 
+# Définir le domain et fields par défaut
+_domain = [
+    ('active', '=', True),
+    ('upgrade_auto', '=', True),
+    ('date_debut_maintenance', '!=', False),
+]
+_fields = ['id', 'name', 'adresse_ip', 'partner_id', 'acces_ssh', 'systeme_id']
+
+# Modifier le domain et fields selon les options
 if get_db_manager or get_reset_passwd:
-    _domain = [('active', '=', True), ('service_id.name', 'ilike', 'odoo')]
-    _fields = ['id', 'name', 'adresse_ip', 'partner_id', 'service_id']
-else:
-    _domain = [
-        ('active', '=', True),
-        ('upgrade_auto', '=', True),
-        ('date_debut_maintenance', '!=', False),
-    ]
-    _fields = ['id', 'name', 'adresse_ip', 'partner_id', 'acces_ssh', 'systeme_id']
+    _domain.append(('service_id.name', 'ilike', 'odoo'))
+
 
 serveurs = models.execute_kw(db, uid, password, 'is.serveur', 'search_read',
     [_domain],
     {
         'fields': _fields,
         'limit': 200,
-        'order': 'service_id,partner_id,name' if (get_db_manager or get_reset_passwd) else 'partner_id,name',
+        'order': 'service_id,partner_id,name' if (get_db_manager or get_reset_passwd) else ('partner_id,name' if not script_path else 'partner_id,name'),
     })
+
+# Vérifier que le script local existe si --script est fourni
+if script_path and not os.path.isfile(script_path):
+    print("ERREUR : Le script '%s' n'existe pas" % script_path)
+    sys.exit(1)
+
+script_basename = os.path.basename(script_path) if script_path else None
 
 print(s('Client', 30), s('SSH', 40), s('Résultat', 0))
 print('-' * 120)
@@ -160,6 +173,40 @@ for serveur in serveurs:
                 statut = 'Réponse HTTP %s (contenu inattendu)' % http_code
         print(s(client, 30), s(nom, 40), '[%s] %s' % (service_name, statut))
         save_action(serveur['id'], action_label, [statut])
+        continue
+
+    # --- Exécution d'un script ---
+    if script_path:
+        if not serveur.get('acces_ssh'):
+            print(s(client, 30), s(nom, 40), 'SSH non configuré')
+            continue
+        
+        acces_ssh = serveur['acces_ssh']
+        commentaire_lines = []
+        remote_path = '/tmp/%s' % script_basename
+        
+        # Copier et exécuter le script
+        cmd_scp = 'scp -o ConnectTimeout=10 -o BatchMode=yes "%s" "%s:%s" 2>&1' % (script_path, acces_ssh, remote_path)
+        scp_out = os.popen(cmd_scp).read().strip()
+        
+        if 'ssh:' in scp_out.lower() or 'permission denied' in scp_out.lower() or 'no such' in scp_out.lower():
+            print(s(client, 30), s(acces_ssh, 40), 'ERREUR SCP : %s' % scp_out)
+            save_action(serveur['id'], action_label, ['ERREUR SCP : %s' % scp_out])
+            continue
+        
+        cmd_exec = 'ssh -o ConnectTimeout=30 -o BatchMode=yes %s "bash %s; rm %s" 2>&1' % (acces_ssh, remote_path, remote_path)
+        exec_out = os.popen(cmd_exec).read().strip()
+        
+        if not exec_out:
+            print(s(client, 30), s(acces_ssh, 40), 'Pas de résultat')
+            commentaire_lines.append('Pas de résultat')
+        else:
+            # Afficher seulement la première ligne du résultat
+            result_line = exec_out.splitlines()[0] if exec_out.splitlines() else 'Pas de résultat'
+            print(s(client, 30), s(acces_ssh, 40), result_line)
+            commentaire_lines.append(result_line)
+        
+        save_action(serveur['id'], action_label, commentaire_lines)
         continue
 
     if not serveur.get('acces_ssh'):

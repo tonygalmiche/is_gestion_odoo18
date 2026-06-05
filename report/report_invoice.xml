@@ -13,7 +13,7 @@
                             border-width:1px;
                             border-style:solid; 
                             border-color:black;
-                            padding:2mm;
+                            padding:1mm;
                         }
                     </style>
                     <div class="address row">
