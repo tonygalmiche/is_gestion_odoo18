@@ -87,7 +87,7 @@
             <field name="name">is_account_invoice_month_pivot</field>
             <field name="model">account.move</field>
             <field name="arch" type="xml">
-                <pivot>
+                <pivot js_class="pivot_cumul">
                     <field name="partner_id"                type="row"/>
                     <field name="invoice_date"              type="col" interval="month"/>
                     <field name="amount_untaxed"            type="measure"/>

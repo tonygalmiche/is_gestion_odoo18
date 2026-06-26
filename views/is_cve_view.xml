@@ -142,7 +142,7 @@
                             <div class="o_kanban_record_body">
                                 <field name="name"/>
                                 <div t-if="record.vendor.value" class="text-muted">
-                                    <i class="fa fa-tag"/> <field name="vendor"/> / <field name="product"/>
+                                    <i class="fa fa-tag" title="Éditeur/Produit"/> <field name="vendor"/> / <field name="product"/>
                                 </div>
                             </div>
                             <div class="o_kanban_record_bottom">

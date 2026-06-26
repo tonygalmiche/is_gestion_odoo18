@@ -17,6 +17,7 @@ Module Gestion Odoo 18 pour InfoSaône
         "account",
         "l10n_fr",
         "l10n_fr_account",
+        "is_pivot_cumul",
         #"account_edi_ubl_cii",
     ],
     "data" : [
