@@ -76,7 +76,7 @@
         <field name="name">is.suivi.temps.client.pivot</field>
         <field name="model">is.suivi.temps.client</field>
         <field name="arch" type="xml">
-            <pivot string="Suivi du temps par client">
+            <pivot string="Suivi du temps par client" js_class="pivot_cumul">
                 <field name="partner_id" type="row"/>
                 <field name="mois" type="col"/>
                 <field name="temps_passe" type="measure"/>
