@@ -18,16 +18,40 @@ except ImportError:
     _logger.warning("Les bibliothèques Google API ne sont pas installées. Exécutez: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib")
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
 
 
 class IsImportGoogleCalendarWizard(models.TransientModel):
     _name = 'is.import.google.calendar.wizard'
     _description = 'Import Google Calendar'
 
-    date_debut = fields.Date(string='Date de début', required=True, default=lambda self: date.today() - timedelta(days=40))
-    date_fin = fields.Date(string='Date de fin', required=True, default=lambda self: date.today())
-    
+    periode = fields.Selection([
+        ('mois_courant', 'Mois en cours'),
+        ('mois_precedent', 'Mois précédent'),
+    ], string='Période', default='mois_precedent', required=True)
+    date_debut = fields.Date(string='Date de début', required=True, default=lambda self: self._get_dates_periode('mois_precedent')[0])
+    date_fin = fields.Date(string='Date de fin', required=True, default=lambda self: self._get_dates_periode('mois_precedent')[1])
+
+    @api.model
+    def _get_dates_periode(self, periode):
+        today = date.today()
+        if periode == 'mois_courant':
+            debut = today.replace(day=1)
+        else:
+            mois_courant_debut = today.replace(day=1)
+            fin_mois_precedent = mois_courant_debut - timedelta(days=1)
+            debut = fin_mois_precedent.replace(day=1)
+        if debut.month == 12:
+            debut_mois_suivant = debut.replace(year=debut.year + 1, month=1, day=1)
+        else:
+            debut_mois_suivant = debut.replace(month=debut.month + 1, day=1)
+        fin = debut_mois_suivant - timedelta(days=1)
+        return debut, fin
+
+    @api.onchange('periode')
+    def _onchange_periode(self):
+        if self.periode:
+            self.date_debut, self.date_fin = self._get_dates_periode(self.periode)
+
     # Champs pour l'authentification OAuth
     state = fields.Selection([
         ('config', 'Configuration'),
@@ -35,8 +59,17 @@ class IsImportGoogleCalendarWizard(models.TransientModel):
         ('import', 'Import')
     ], default='config', string='État')
     auth_url = fields.Char(string='URL d\'autorisation', readonly=True)
-    auth_code = fields.Char(string='Code d\'autorisation')
-    
+    code_verifier = fields.Char(string='PKCE Code Verifier', readonly=True)
+
+    def _get_redirect_uri(self):
+        # Google refuse les redirect_uri en http:// non-loopback (erreur invalid_request).
+        # On utilise donc une URL dédiée (ex: http://localhost:8069), différente de web.base.url,
+        # paramétrable via le paramètre système is_gestion_odoo18.google_redirect_base_url.
+        ir_config = self.env['ir.config_parameter'].sudo()
+        base_url = ir_config.get_param('is_gestion_odoo18.google_redirect_base_url') \
+            or ir_config.get_param('web.base.url')
+        return f"{base_url}/google_calendar/callback"
+
     def _get_credentials(self):
         """Récupérer les credentials valides ou None"""
         company = self.env.company
@@ -98,17 +131,19 @@ class IsImportGoogleCalendarWizard(models.TransientModel):
             flow = Flow.from_client_config(
                 credentials_info,
                 scopes=SCOPES,
-                redirect_uri=REDIRECT_URI
+                redirect_uri=self._get_redirect_uri()
             )
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
                 include_granted_scopes='true',
-                prompt='consent'
+                prompt='consent',
+                state=f"{self.id}-{company.id}"
             )
-            
+
             self.write({
                 'state': 'auth',
-                'auth_url': auth_url
+                'auth_url': auth_url,
+                'code_verifier': flow.code_verifier,
             })
             
             return {
@@ -121,40 +156,6 @@ class IsImportGoogleCalendarWizard(models.TransientModel):
             
         except Exception as e:
             raise UserError(f"Erreur lors de la génération de l'URL d'autorisation: {e}")
-    
-    def action_validate_code(self):
-        """Valider le code d'autorisation et récupérer le token"""
-        self.ensure_one()
-        
-        if not self.auth_code:
-            raise UserError("Veuillez entrer le code d'autorisation.")
-        
-        company = self.env.company
-        
-        try:
-            credentials_info = json.loads(company.is_google_credentials_json)
-        except json.JSONDecodeError:
-            raise UserError("Le JSON des credentials Google n'est pas valide.")
-        
-        try:
-            flow = Flow.from_client_config(
-                credentials_info,
-                scopes=SCOPES,
-                redirect_uri=REDIRECT_URI
-            )
-            flow.fetch_token(code=self.auth_code)
-            creds = flow.credentials
-            
-            # Sauvegarder le token
-            company.sudo().write({
-                'is_google_token_json': creds.to_json()
-            })
-            
-            # Lancer l'import
-            return self._do_import(creds)
-            
-        except Exception as e:
-            raise UserError(f"Erreur lors de la validation du code: {e}\n\nVérifiez que le code est correct et n'a pas expiré.")
     
     def _do_import(self, creds):
         """Effectuer l'import des événements de tous les calendriers"""

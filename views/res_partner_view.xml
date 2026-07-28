@@ -13,6 +13,8 @@
             </field>
             <field name="category_id" position="after">
                 <field name="is_date_debut_maintenance"/>
+                <field name="is_ca_12_mois" invisible="not is_company"/>
+                <field name="is_ca_24_mois" invisible="not is_company"/>
                 <!-- <field name="is_derniere_intervention"/> -->
             </field>
             <field name="property_account_position_id" position="after">
@@ -33,18 +35,34 @@
             <field name="phone" position="before">
                 <field name="is_contact" optional="show"/>
             </field>
+            <field name="country_id" position="replace"/>
             <field name="city" position="replace">
                 <field name="zip"         optional="show"/>
                 <field name="city"        optional="show"/>
-                <field name="is_effectif" optional="show"/>
-                <field name="currency_id" optional="show"/>
-                <field name="is_date_debut_maintenance" optional="show"/>
+                <field name="country_id"  optional="show"/>
+                <field name="is_effectif" optional="hide" widget="custom_number_widget"/>
+                <field name="currency_id" optional="hide"/>
+                <field name="is_date_debut_maintenance" optional="hide"/>
+                <field name="is_ca_12_mois" optional="show"/>
+                <field name="is_ca_24_mois" optional="show"/>
             </field>
             <field name="user_id"      position="replace"/>
             <field name="activity_ids" position="replace"/>
-            <field name="country_id"   position="replace"/>
             <field name="state_id"   position="replace"/>
             <field name="company_id"   position="replace"/>
+        </field>
+    </record>
+    <record model="ir.ui.view" id="is_view_partner_filter">
+        <field name="name">is_view_partner_filter</field>
+        <field name="model">res.partner</field>
+        <field name="mode">primary</field>
+        <field name="inherit_id" ref="base.view_res_partner_filter"/>
+        <field name="arch" type="xml">
+            <filter name="customer" position="after">
+                <separator/>
+                <filter string="Avec CA (12 mois)" name="is_avec_ca" domain="[('is_ca_12_mois', '&gt;', 0)]"/>
+                <filter string="Avec CA (24 mois)" name="is_avec_ca_24_mois" domain="[('is_ca_24_mois', '&gt;', 0)]"/>
+            </filter>
         </field>
     </record>
     <record  id="is_client_action" model="ir.actions.act_window">
@@ -52,6 +70,16 @@
         <field name="res_model">res.partner</field>
         <field name="limit">100</field>
         <field name="view_mode">list,form</field>
-        <field name="context">{"search_default_customer":1}</field>
+        <field name="search_view_id" ref="is_view_partner_filter"/>
+        <field name="context">{"search_default_is_avec_ca_24_mois":1}</field>
+    </record>
+    <record id="is_cron_calculer_ca_12_mois" model="ir.cron">
+        <field name="name">Calcul du CA des 12/24 derniers mois des clients</field>
+        <field name="model_id" ref="base.model_res_partner"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_calculer_ca_12_mois()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active">True</field>
     </record>
 </odoo>

@@ -44,6 +44,29 @@ class AccountMove(models.Model):
         return res
 
 
+    def _generate_en16931_dict(self, *args, **kwargs):
+        """Surcharge : si la facture n'a pas d'adresse de livraison
+        (partner_shipping_id vide), le module account_invoice_en16931 ne
+        remplit pas le bloc BG-13 (Deliver to). Le générateur XML Factur-X
+        produit alors un élément ApplicableHeaderTradeDelivery "nillé", ce
+        qui est invalide contre le XSD officiel du profil "extended"
+        (erreur "The element is not 'nillable'").
+        On complète ici ce bloc avec l'adresse de l'acheteur (BT-44/50-55)
+        quand elle n'a pas déjà été renseignée par le module d'origine.
+        """
+        vals = super()._generate_en16931_dict(*args, **kwargs)
+        if not self.partner_shipping_id and "BT-70" not in vals:
+            vals["BT-70"]  = vals.get("BT-44")   # Nom du destinataire de la livraison
+            vals["BT-75"]  = vals.get("BT-50")   # Adresse - rue (ligne 1)
+            vals["BT-76"]  = vals.get("BT-51")   # Adresse - rue (ligne 2)
+            vals["BT-77"]  = vals.get("BT-52")   # Ville
+            vals["BT-78"]  = vals.get("BT-53")   # Code postal
+            vals["BT-165"] = vals.get("BT-163")  # Adresse - rue (ligne 3)
+            vals["BT-79"]  = vals.get("BT-54")   # Département/région
+            vals["BT-80"]  = vals.get("BT-55")   # Code pays
+        return vals
+
+
     def calculer_tva(self):
         for obj in self:
             obj.compute_taxes()
