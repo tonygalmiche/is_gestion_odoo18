@@ -83,14 +83,14 @@
 
 
 
-        <record id="is_account_invoice_month_pivot" model="ir.ui.view">
-            <field name="name">is_account_invoice_month_pivot</field>
+        <record id="is_account_invoice_month_pivot_v2" model="ir.ui.view">
+            <field name="name">is_account_invoice_month_pivot_v2</field>
             <field name="model">account.move</field>
             <field name="arch" type="xml">
                 <pivot js_class="pivot_cumul">
                     <field name="partner_id"                type="row"/>
                     <field name="invoice_date"              type="col" interval="month"/>
-                    <field name="amount_untaxed"            type="measure"/>
+                    <field name="amount_untaxed_in_currency_signed" type="measure" string="Montant HT"/>
                     <!-- <field name="is_amount_untaxed_percent" type="measure" operator="+"/> -->
                 </pivot>
             </field>
@@ -99,19 +99,19 @@
             <field name="name">Factures par client et par mois</field>
             <field name="res_model">account.move</field>
             <field name="limit">100</field>
-            <field name="view_id" ref="is_account_invoice_month_pivot"/>
+            <field name="view_id" ref="is_account_invoice_month_pivot_v2"/>
             <field name="view_mode">pivot,graph,list,form</field>
             <field name="domain">[('state','not in',['cancel'])]</field>
         </record>
 
-        <record id="is_account_invoice_year_pivot" model="ir.ui.view">
-            <field name="name">is_account_invoice_year_pivot</field>
+        <record id="is_account_invoice_year_pivot_v2" model="ir.ui.view">
+            <field name="name">is_account_invoice_year_pivot_v2</field>
             <field name="model">account.move</field>
             <field name="arch" type="xml">
                 <pivot>
                     <field name="partner_id"     type="row"/>
                     <field name="invoice_date"   type="col" interval="year"/>
-                    <field name="amount_untaxed" type="measure"/>
+                    <field name="amount_untaxed_in_currency_signed" type="measure" string="Montant HT"/>
                 </pivot>
             </field>
         </record>
@@ -119,10 +119,10 @@
             <field name="name">Factures par client et par an</field>
             <field name="res_model">account.move</field>
             <field name="limit">100</field>
-            <field name="view_id" ref="is_account_invoice_year_pivot"/>
+            <field name="view_id" ref="is_account_invoice_year_pivot_v2"/>
             <field name="view_mode">pivot,graph,list,form</field>
             <field name="domain">[('state','not in',['cancel'])]</field>
-        </record> 
+        </record>
 
 
     </data>

@@ -12,9 +12,13 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/../../../scripts-externes')
 from config import URL as url, DB as db, USERNAME as username, PASSWORD as password
 
-common = xmlrpc.client.ServerProxy('{}/xmlrpc/2/common'.format(url))
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode    = ssl.CERT_NONE
+
+common = xmlrpc.client.ServerProxy('{}/xmlrpc/2/common'.format(url), context=ssl_context)
 uid    = common.authenticate(db, username, password, {})
-models = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(url))
+models = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(url), context=ssl_context)
 
 parser = argparse.ArgumentParser(description='Vérification des mises à jour des VPS')
 parser.add_argument('filtre',         nargs='?', default='', help='Filtre sur le nom du client ou du VPS')
