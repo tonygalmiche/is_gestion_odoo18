@@ -225,7 +225,8 @@ for serveur in serveurs:
             "'echo SYS:$(lsb_release -si 2>/dev/null); "
             "echo VER:$(lsb_release -sc 2>/dev/null); "
             "echo KER:$(uname -r); "
-            "echo KDT:$(date -r /boot/vmlinuz-$(uname -r) +%%Y-%%m-%%d 2>/dev/null)') 2>&1" % acces_ssh
+            "echo KDT:$(date -r /boot/vmlinuz-$(uname -r) +%%Y-%%m-%%d 2>/dev/null); "
+            "echo UPT:$(uptime -p 2>/dev/null)') 2>&1" % acces_ssh
         )
         out = os.popen(cmd_sys).read().strip()
         infos = {}
@@ -237,6 +238,7 @@ for serveur in serveurs:
         sys_ver    = infos.get('VER', 'N/A')
         kernel     = infos.get('KER', 'N/A')
         kernel_dt  = infos.get('KDT', 'N/A')
+        uptime_str = infos.get('UPT', 'N/A')
         ssh_error  = next((l.strip() for l in out.splitlines()
                            if l.lower().startswith('ssh:')
                            or 'timed out' in l.lower()
@@ -247,9 +249,9 @@ for serveur in serveurs:
             print(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
         else:
             kernel_str   = '%s(%s)' % (kernel, kernel_dt) if kernel_dt and kernel_dt != 'N/A' else kernel
-            info_systeme = '%s %s - noyau: %s' % (sys_name, sys_ver, kernel_str)
+            info_systeme = '%s %s - noyau: %s - uptime: %s' % (sys_name, sys_ver, kernel_str, uptime_str)
             print(s(client, 30), s(acces_ssh, 40),
-                  '%-10s %-12s  noyau: %s' % (sys_name, sys_ver, kernel_str))
+                  '%-10s %-12s  noyau: %s  uptime: %s' % (sys_name, sys_ver, kernel_str, uptime_str))
             models.execute_kw(db, uid, password, 'is.serveur', 'write',
                               [[serveur['id']], {'info_systeme': info_systeme}])
             save_action(serveur['id'], action_label, [info_systeme])
