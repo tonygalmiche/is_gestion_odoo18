@@ -44,5 +44,5 @@ Module Gestion Odoo 18 pour InfoSaône
     },
     "installable": True,
     "application": True,
-    "license": "LGPL-3",
+    "license": "AGPL-3",
 }
