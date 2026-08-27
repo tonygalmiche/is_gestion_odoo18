@@ -40,11 +40,11 @@
                 <field name="zip"         optional="show"/>
                 <field name="city"        optional="show"/>
                 <field name="country_id"  optional="show"/>
-                <field name="is_effectif" optional="hide" widget="custom_number_widget"/>
+                <field name="is_effectif" optional="hide" widget="is_web_number_color"/>
                 <field name="currency_id" optional="hide"/>
                 <field name="is_date_debut_maintenance" optional="hide"/>
-                <field name="is_ca_12_mois" optional="show"/>
-                <field name="is_ca_24_mois" optional="show"/>
+                <field name="is_ca_12_mois" optional="show" widget="is_web_number_color"/>
+                <field name="is_ca_24_mois" optional="show" widget="is_web_number_color"/>
             </field>
             <field name="user_id"      position="replace"/>
             <field name="activity_ids" position="replace"/>

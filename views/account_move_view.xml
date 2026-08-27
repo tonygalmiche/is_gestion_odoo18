@@ -43,11 +43,23 @@
             <field name="arch" type="xml">
                 <field name="invoice_date" position="before">
                     <field name="is_affaire_id"             optional="show"/>
-                    <field name="is_amount_untaxed_percent" optional="show"/>
+                    <field name="is_amount_untaxed_percent" optional="show" widget="is_web_number_color"/>
                     <field name="currency_id"               optional="show"/>
                 </field>
                 <field name="invoice_date_due" position="after">
                     <field name="is_date_paiement" optional="show"/>
+                </field>
+                <field name="amount_untaxed_in_currency_signed" position="attributes">
+                    <attribute name="widget">is_web_number_color</attribute>
+                </field>
+                <xpath expr="//field[@name='amount_total_in_currency_signed'][1]" position="attributes">
+                    <attribute name="widget">is_web_number_color</attribute>
+                </xpath>
+                <xpath expr="//field[@name='amount_total_in_currency_signed'][2]" position="attributes">
+                    <attribute name="widget">is_web_number_color</attribute>
+                </xpath>
+                <field name="amount_residual_signed" position="attributes">
+                    <attribute name="widget">is_web_number_color</attribute>
                 </field>
             </field>
         </record>

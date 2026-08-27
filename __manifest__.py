@@ -18,7 +18,7 @@ Module Gestion Odoo 18 pour InfoSaône
         "l10n_fr",
         "l10n_fr_account",
         "is_pivot_cumul",
-        "custom_number_widget",
+        "is_web_number_color",
         "l10n_fr_einvoicing",
         #"account_edi_ubl_cii",
     ],
