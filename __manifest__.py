@@ -20,6 +20,8 @@ Module Gestion Odoo 18 pour InfoSaône
         "is_pivot_cumul",
         "is_web_number_color",
         "l10n_fr_einvoicing",
+        "base_business_document_import",
+        "account_invoice_import",
         #"account_edi_ubl_cii",
     ],
     "data" : [
