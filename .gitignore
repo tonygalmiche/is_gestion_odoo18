@@ -1,6 +1,9 @@
 # Fichiers de configuration locaux
 scripts-externes/config.py
 
+# Documentation interne (non versionnée)
+doc/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
