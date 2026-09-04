@@ -4,6 +4,9 @@
 # Script de détection de vulnérabilité CIFSwitch (CVE-2024-12368)
 # =============================================================================
 #
+# USAGE (via verif-update-vps.py) :
+#   ./verif-update-vps.py --script script/CIFSwitch.sh
+#
 # CONTEXTE :
 #   CIFSwitch est une vulnérabilité de privilege escalation dans le noyau Linux
 #   qui affecte les systèmes avec cifs-utils installé et User Namespaces activés.

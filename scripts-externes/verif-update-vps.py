@@ -30,7 +30,7 @@ parser.add_argument('--get-system',            action='store_true', help='Récup
 parser.add_argument('--get-database-manager',  action='store_true', help='Vérifier si l\'accès au gestionnaire de base de données Odoo est bloqué')
 parser.add_argument('--get-reset-password',    action='store_true', help='Vérifier si la page de réinitialisation du mot de passe Odoo est accessible')
 parser.add_argument('--add-action',            action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
-parser.add_argument('--script',                type=str, help='Copier et exécuter un script local sur les serveurs (ex: CIFSwitch.sh)')
+parser.add_argument('--script',                type=str, help='Copier et exécuter un script local sur les serveurs (ex: script/CIFSwitch.sh, script/fail2ban-ip-bannies.sh)')
 args    = parser.parse_args()
 
 if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system and not args.get_database_manager and not args.get_reset_password and not args.script:
