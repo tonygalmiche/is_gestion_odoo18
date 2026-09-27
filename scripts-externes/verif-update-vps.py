@@ -8,6 +8,8 @@ import argparse
 import time
 import urllib.request
 import ssl
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/../../../scripts-externes')
 from config import URL as url, DB as db, USERNAME as username, PASSWORD as password
@@ -20,6 +22,9 @@ common = xmlrpc.client.ServerProxy('{}/xmlrpc/2/common'.format(url), context=ssl
 uid    = common.authenticate(db, username, password, {})
 models = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(url), context=ssl_context)
 
+# ServerProxy partage une seule connexion HTTP : un seul appel XML-RPC à la fois entre les threads
+odoo_lock = threading.Lock()
+
 parser = argparse.ArgumentParser(description='Vérification des mises à jour des VPS')
 parser.add_argument('filtre',         nargs='?', default='', help='Filtre sur le nom du client ou du VPS')
 parser.add_argument('--update',       action='store_true', help='Lancer apt-get update')
@@ -31,6 +36,7 @@ parser.add_argument('--get-database-manager',  action='store_true', help='Vérif
 parser.add_argument('--get-reset-password',    action='store_true', help='Vérifier si la page de réinitialisation du mot de passe Odoo est accessible')
 parser.add_argument('--add-action',            action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
 parser.add_argument('--script',                type=str, help='Copier et exécuter un script local sur les serveurs (ex: script/CIFSwitch.sh, script/fail2ban-ip-bannies.sh)')
+parser.add_argument('--jobs',                  type=int, default=10, help='Nombre de serveurs traités en parallèle (défaut: 10). --dist-upgrade et --reboot restent séquentiels')
 args    = parser.parse_args()
 
 if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system and not args.get_database_manager and not args.get_reset_password and not args.script:
@@ -101,15 +107,16 @@ def save_action(serveur_id, label, lines):
         'action':     label,
         'commentaire': '\n'.join(lines),
     }
-    existants = models.execute_kw(db, uid, password, 'is.serveur.action', 'search',
-        [[('serveur_id', '=', serveur_id),
-          ('action',     '=', label),
-          ('date_heure', '>=', today + ' 00:00:00'),
-          ('date_heure', '<=', today + ' 23:59:59')]])
-    if existants:
-        models.execute_kw(db, uid, password, 'is.serveur.action', 'write', [existants, vals])
-    else:
-        models.execute_kw(db, uid, password, 'is.serveur.action', 'create', [vals])
+    with odoo_lock:
+        existants = models.execute_kw(db, uid, password, 'is.serveur.action', 'search',
+            [[('serveur_id', '=', serveur_id),
+              ('action',     '=', label),
+              ('date_heure', '>=', today + ' 00:00:00'),
+              ('date_heure', '<=', today + ' 23:59:59')]])
+        if existants:
+            models.execute_kw(db, uid, password, 'is.serveur.action', 'write', [existants, vals])
+        else:
+            models.execute_kw(db, uid, password, 'is.serveur.action', 'create', [vals])
 
 
 # Définir le domain et fields par défaut
@@ -143,12 +150,23 @@ script_basename = os.path.basename(script_path) if script_path else None
 print(s('Client', 30), s('SSH', 40), s('Résultat', 0))
 print('-' * 120)
 
-for serveur in serveurs:
-    client = serveur['partner_id'] and serveur['partner_id'][1] or ''
-    nom    = serveur['name']
 
-    if filtre and filtre not in client.lower() and filtre not in nom.lower():
-        continue
+def nom_client(serveur):
+    return serveur['partner_id'] and serveur['partner_id'][1] or ''
+
+
+def traiter(serveur, direct=False):
+    """Traite un serveur. En mode direct, affiche au fil de l'eau ; sinon retourne les lignes à afficher."""
+    sortie = []
+
+    def p(*a):
+        if direct:
+            print(*a, flush=True)
+        else:
+            sortie.append(' '.join(str(x) for x in a))
+
+    client = nom_client(serveur)
+    nom    = serveur['name']
 
     # --- Vérification URL Odoo (database manager / reset password) ---
     if get_db_manager or get_reset_passwd:
@@ -159,8 +177,8 @@ for serveur in serveurs:
             path = '/web/reset_password'
         content, http_code = fetch_https(nom, path)
         if content is None:
-            print(s(client, 30), s(nom, 40), '[%s] ERREUR : %s' % (service_name, http_code))
-            continue
+            p(s(client, 30), s(nom, 40), '[%s] ERREUR : %s' % (service_name, http_code))
+            return sortie
         if get_db_manager:
             if 'disabled by the administrator' in content or 'has been disabled' in content:
                 statut = 'BLOQUÉ (disabled by administrator)'
@@ -175,15 +193,15 @@ for serveur in serveurs:
                 statut = 'OUVERT - accès non protégé !'
             else:
                 statut = 'Réponse HTTP %s (contenu inattendu)' % http_code
-        print(s(client, 30), s(nom, 40), '[%s] %s' % (service_name, statut))
+        p(s(client, 30), s(nom, 40), '[%s] %s' % (service_name, statut))
         save_action(serveur['id'], action_label, [statut])
-        continue
+        return sortie
 
     # --- Exécution d'un script ---
     if script_path:
         if not serveur.get('acces_ssh'):
-            print(s(client, 30), s(nom, 40), 'SSH non configuré')
-            continue
+            p(s(client, 30), s(nom, 40), 'SSH non configuré')
+            return sortie
         
         acces_ssh = serveur['acces_ssh']
         commentaire_lines = []
@@ -194,27 +212,27 @@ for serveur in serveurs:
         scp_out = os.popen(cmd_scp).read().strip()
         
         if 'ssh:' in scp_out.lower() or 'permission denied' in scp_out.lower() or 'no such' in scp_out.lower():
-            print(s(client, 30), s(acces_ssh, 40), 'ERREUR SCP : %s' % scp_out)
+            p(s(client, 30), s(acces_ssh, 40), 'ERREUR SCP : %s' % scp_out)
             save_action(serveur['id'], action_label, ['ERREUR SCP : %s' % scp_out])
-            continue
+            return sortie
         
         cmd_exec = 'ssh -o ConnectTimeout=30 -o BatchMode=yes %s "bash %s; rm %s" 2>&1' % (acces_ssh, remote_path, remote_path)
         exec_out = os.popen(cmd_exec).read().strip()
         
         if not exec_out:
-            print(s(client, 30), s(acces_ssh, 40), 'Pas de résultat')
+            p(s(client, 30), s(acces_ssh, 40), 'Pas de résultat')
             commentaire_lines.append('Pas de résultat')
         else:
             # Afficher seulement la première ligne du résultat
             result_line = exec_out.splitlines()[0] if exec_out.splitlines() else 'Pas de résultat'
-            print(s(client, 30), s(acces_ssh, 40), result_line)
+            p(s(client, 30), s(acces_ssh, 40), result_line)
             commentaire_lines.append(result_line)
         
         save_action(serveur['id'], action_label, commentaire_lines)
-        continue
+        return sortie
 
     if not serveur.get('acces_ssh'):
-        continue
+        return sortie
 
     acces_ssh = serveur['acces_ssh']
 
@@ -246,16 +264,17 @@ for serveur in serveurs:
                            or 'connection refused' in l.lower()
                            or 'permission denied' in l.lower()), None)
         if ssh_error:
-            print(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
+            p(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
         else:
             kernel_str   = '%s(%s)' % (kernel, kernel_dt) if kernel_dt and kernel_dt != 'N/A' else kernel
             info_systeme = '%s %s - noyau: %s - uptime: %s' % (sys_name, sys_ver, kernel_str, uptime_str)
-            print(s(client, 30), s(acces_ssh, 40),
+            p(s(client, 30), s(acces_ssh, 40),
                   '%-10s %-12s  noyau: %s  uptime: %s' % (sys_name, sys_ver, kernel_str, uptime_str))
-            models.execute_kw(db, uid, password, 'is.serveur', 'write',
-                              [[serveur['id']], {'info_systeme': info_systeme}])
+            with odoo_lock:
+                models.execute_kw(db, uid, password, 'is.serveur', 'write',
+                                  [[serveur['id']], {'info_systeme': info_systeme}])
             save_action(serveur['id'], action_label, [info_systeme])
-        continue
+        return sortie
 
     # --- DirtyFrag (CVE-2026-43284 / CVE-2026-43500) ---
     # Élévation de privilèges locale (LPE) dans le noyau Linux via algif_aead.
@@ -271,13 +290,13 @@ for serveur in serveurs:
         )
         etat = os.popen(cmd_check).read().strip()
         if etat not in ('OK', 'ABSENT'):
-            print(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % (etat or 'pas de réponse'))
-            continue
+            p(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % (etat or 'pas de réponse'))
+            return sortie
         if etat == 'OK':
-            print(s(client, 30), s(acces_ssh, 40), 'DirtyFrag : mitigation déjà appliquée')
+            p(s(client, 30), s(acces_ssh, 40), 'DirtyFrag : mitigation déjà appliquée')
             commentaire_lines.append('Mitigation déjà présente')
         else:
-            print(s(client, 30), s(acces_ssh, 40), 'DirtyFrag : application de la mitigation...')
+            p(s(client, 30), s(acces_ssh, 40), 'DirtyFrag : application de la mitigation...')
             cmd_fix = (
                 "(ssh -o ConnectTimeout=30 -o BatchMode=yes %s "
                 "\"sh -c \\\"printf 'install esp4 /bin/false\\\\ninstall esp6 /bin/false\\\\ninstall rxrpc /bin/false\\\\n' "
@@ -292,17 +311,17 @@ for serveur in serveurs:
             )
             verif = os.popen(cmd_verif).read().strip()
             if verif == 'OK':
-                print(' ' * 62, '>>> Mitigation appliquée avec succès')
+                p(' ' * 62, '>>> Mitigation appliquée avec succès')
                 commentaire_lines.append('Mitigation appliquée')
             else:
-                print(' ' * 62, '>>> ECHEC application mitigation')
+                p(' ' * 62, '>>> ECHEC application mitigation')
                 if out:
-                    print(' ' * 62, out)
+                    p(' ' * 62, out)
                 commentaire_lines.append('ECHEC mitigation')
                 if out:
                     commentaire_lines.append(out)
         save_action(serveur['id'], action_label, commentaire_lines)
-        continue
+        return sortie
 
     # --- apt update / upgrade ---
     # Simulation (--simulate : n'installe rien) de ce que ferait réellement dist-upgrade :
@@ -310,7 +329,7 @@ for serveur in serveurs:
     # Seules les lignes 'Inst ' (non traduites) correspondent à des paquets à installer.
     if do_update:
         cmd_upd = (
-            "(ssh -o ConnectTimeout=60 -o BatchMode=yes %s "
+            "(ssh -o ConnectTimeout=15 -o BatchMode=yes %s "
             "'apt-get update -qq 2>/dev/null') 2>&1" % acces_ssh
         )
         os.popen(cmd_upd).read()
@@ -320,7 +339,7 @@ for serveur in serveurs:
         )
     else:
         cmd = (
-            "(ssh -o ConnectTimeout=60 -o BatchMode=yes %s "
+            "(ssh -o ConnectTimeout=15 -o BatchMode=yes %s "
             "'apt-get update -qq 2>/dev/null && apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
         )
     lines   = os.popen(cmd).read().splitlines()
@@ -333,13 +352,13 @@ for serveur in serveurs:
                       or 'connection refused' in l.lower()
                       or 'permission denied' in l.lower()), None)
     if ssh_error:
-        print(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
+        p(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
         save_action(serveur['id'], action_label, ['ERREUR SSH : %s' % ssh_error])
-        continue
+        return sortie
 
     commentaire_lines = []
     if not paquets:
-        print(s(client, 30), s(acces_ssh, 40), 'OK - à jour')
+        p(s(client, 30), s(acces_ssh, 40), 'OK - à jour')
         commentaire_lines.append('OK - à jour')
         if reboot:
             # Vérifier qu'aucun apt/dpkg n'est en cours via le verrou
@@ -350,23 +369,23 @@ for serveur in serveurs:
             pids = os.popen(cmd_check).read().strip()
             if pids:
                 msg = 'REBOOT ANNULÉ : apt/dpkg en cours (pid %s)' % pids.replace('\n', ',')
-                print(' ' * 62, '>>>', msg)
+                p(' ' * 62, '>>>', msg)
                 commentaire_lines.append(msg)
             else:
-                print(' ' * 62, '>>> Reboot en cours...')
+                p(' ' * 62, '>>> Reboot en cours...')
                 cmd_reboot = (
                     "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
                     "'nohup reboot &>/dev/null &') 2>&1" % acces_ssh
                 )
                 os.popen(cmd_reboot).read()
-                print(' ' * 62, '>>> Reboot lancé')
+                p(' ' * 62, '>>> Reboot lancé')
                 commentaire_lines.append('Reboot lancé')
     else:
-        print(s(client, 30), s(acces_ssh, 40), '%d paquet(s) à mettre à jour' % len(paquets))
+        p(s(client, 30), s(acces_ssh, 40), '%d paquet(s) à mettre à jour' % len(paquets))
         commentaire_lines.append('%d paquet(s) à mettre à jour :' % len(paquets))
         commentaire_lines.extend(paquets)
         if upgrade:
-            print(' ' * 62, '>>> Lancement de apt-get dist-upgrade...')
+            p(' ' * 62, '>>> Lancement de apt-get dist-upgrade...')
             t0 = time.time()
             cmd_upgrade = (
                 "(ssh -o ConnectTimeout=300 -o BatchMode=yes %s "
@@ -374,8 +393,8 @@ for serveur in serveurs:
             )
             out = os.popen(cmd_upgrade).read()
             for line in out.splitlines():
-                print(' ' * 62, line)
-            print(' ' * 62, '>>> Durée : %.1fs' % (time.time() - t0))
+                p(' ' * 62, line)
+            p(' ' * 62, '>>> Durée : %.1fs' % (time.time() - t0))
             # Vérification après upgrade
             cmd_verif = (
                 "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
@@ -384,19 +403,36 @@ for serveur in serveurs:
             reste = [l.strip()[5:] for l in os.popen(cmd_verif).read().splitlines() if l.startswith('Inst ')]
             if reste:
                 commentaire_lines.append('ATTENTION : %d paquet(s) toujours en attente :' % len(reste))
-                print(' ' * 62, '>>> ATTENTION : %d paquet(s) toujours en attente' % len(reste))
+                p(' ' * 62, '>>> ATTENTION : %d paquet(s) toujours en attente' % len(reste))
                 commentaire_lines.extend(reste)
             else:
-                print(' ' * 62, '>>> Upgrade terminé - serveur à jour')
+                p(' ' * 62, '>>> Upgrade terminé - serveur à jour')
                 commentaire_lines.append('Upgrade terminé - serveur à jour')
             if reboot:
-                print(' ' * 62, '>>> Reboot en cours...')
+                p(' ' * 62, '>>> Reboot en cours...')
                 cmd_reboot = (
                     "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
                     "'nohup reboot &>/dev/null &') 2>&1" % acces_ssh
                 )
                 os.popen(cmd_reboot).read()
-                print(' ' * 62, '>>> Reboot lancé')
+                p(' ' * 62, '>>> Reboot lancé')
                 commentaire_lines.append('Reboot lancé')
 
     save_action(serveur['id'], action_label, commentaire_lines)
+    return sortie
+
+
+a_traiter = [sv for sv in serveurs
+             if not filtre or filtre in nom_client(sv).lower() or filtre in sv['name'].lower()]
+
+# dist-upgrade / reboot : séquentiel pour suivre l'upgrade en direct et pouvoir interrompre
+jobs = 1 if upgrade else max(1, args.jobs)
+if jobs == 1:
+    for serveur in a_traiter:
+        traiter(serveur, direct=True)
+else:
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        # map() rend les résultats dans l'ordre de la liste, dès qu'ils sont disponibles
+        for lignes in executor.map(traiter, a_traiter):
+            for ligne in lignes:
+                print(ligne, flush=True)
