@@ -362,11 +362,9 @@ for serveur in serveurs:
                 print(' ' * 62, '>>> Reboot lancé')
                 commentaire_lines.append('Reboot lancé')
     else:
-        print(s(client, 30), s(acces_ssh, 40), '%d paquet(s) à mettre à jour :' % len(paquets))
+        print(s(client, 30), s(acces_ssh, 40), '%d paquet(s) à mettre à jour' % len(paquets))
         commentaire_lines.append('%d paquet(s) à mettre à jour :' % len(paquets))
-        for p in paquets:
-            print(' ' * 62, p)
-            commentaire_lines.append(p)
+        commentaire_lines.extend(paquets)
         if upgrade:
             print(' ' * 62, '>>> Lancement de apt-get dist-upgrade...')
             t0 = time.time()
@@ -386,10 +384,8 @@ for serveur in serveurs:
             reste = [l.strip()[5:] for l in os.popen(cmd_verif).read().splitlines() if l.startswith('Inst ')]
             if reste:
                 commentaire_lines.append('ATTENTION : %d paquet(s) toujours en attente :' % len(reste))
-                print(' ' * 62, '>>> ATTENTION : %d paquet(s) toujours en attente :' % len(reste))
-                for p in reste:
-                    print(' ' * 62, '  ', p)
-                    commentaire_lines.append(p)
+                print(' ' * 62, '>>> ATTENTION : %d paquet(s) toujours en attente' % len(reste))
+                commentaire_lines.extend(reste)
             else:
                 print(' ' * 62, '>>> Upgrade terminé - serveur à jour')
                 commentaire_lines.append('Upgrade terminé - serveur à jour')
