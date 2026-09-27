@@ -305,7 +305,9 @@ for serveur in serveurs:
         continue
 
     # --- apt update / upgrade ---
-    # Les lignes de paquets contiennent toujours un '/' (ex: bash/bookworm ...)
+    # Simulation (--simulate : n'installe rien) de ce que ferait réellement dist-upgrade :
+    # exclut les paquets en phasage Ubuntu et en hold, contrairement à 'apt list --upgradable'.
+    # Seules les lignes 'Inst ' (non traduites) correspondent à des paquets à installer.
     if do_update:
         cmd_upd = (
             "(ssh -o ConnectTimeout=60 -o BatchMode=yes %s "
@@ -314,15 +316,15 @@ for serveur in serveurs:
         os.popen(cmd_upd).read()
         cmd = (
             "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
-            "'apt list --upgradable 2>/dev/null') 2>&1" % acces_ssh
+            "'apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
         )
     else:
         cmd = (
             "(ssh -o ConnectTimeout=60 -o BatchMode=yes %s "
-            "'apt-get update -qq 2>/dev/null && apt list --upgradable 2>/dev/null') 2>&1" % acces_ssh
+            "'apt-get update -qq 2>/dev/null && apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
         )
     lines   = os.popen(cmd).read().splitlines()
-    paquets = [l.strip() for l in lines if '/' in l]  # seules les vraies lignes de paquets
+    paquets = [l.strip()[5:] for l in lines if l.startswith('Inst ')]  # seules les vraies lignes de paquets
 
     # Détecter les erreurs SSH (connexion refusée, timeout, etc.)
     ssh_error = next((l.strip() for l in lines if l.lower().startswith('ssh:')
@@ -379,9 +381,9 @@ for serveur in serveurs:
             # Vérification après upgrade
             cmd_verif = (
                 "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
-                "'apt list --upgradable 2>/dev/null') 2>&1" % acces_ssh
+                "'apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
             )
-            reste = [l.strip() for l in os.popen(cmd_verif).read().splitlines() if '/' in l]
+            reste = [l.strip()[5:] for l in os.popen(cmd_verif).read().splitlines() if l.startswith('Inst ')]
             if reste:
                 commentaire_lines.append('ATTENTION : %d paquet(s) toujours en attente :' % len(reste))
                 print(' ' * 62, '>>> ATTENTION : %d paquet(s) toujours en attente :' % len(reste))
