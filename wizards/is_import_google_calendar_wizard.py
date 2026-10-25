@@ -3,15 +3,19 @@ from odoo import fields, models, api
 from odoo.exceptions import UserError
 import json
 import logging
+import warnings
 from datetime import date, datetime, timedelta
 
 _logger = logging.getLogger(__name__)
 
 try:
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    from google_auth_oauthlib.flow import Flow
-    from googleapiclient.discovery import build
+    with warnings.catch_warnings():
+        # google.api_core prévient de la fin du support de Python 3.11 (oct. 2027)
+        warnings.filterwarnings("ignore", category=FutureWarning, module="google.api_core")
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from google_auth_oauthlib.flow import Flow
+        from googleapiclient.discovery import build
     GOOGLE_API_AVAILABLE = True
 except ImportError:
     GOOGLE_API_AVAILABLE = False
