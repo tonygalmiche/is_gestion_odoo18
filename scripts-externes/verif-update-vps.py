@@ -147,7 +147,12 @@ if script_path and not os.path.isfile(script_path):
 
 script_basename = os.path.basename(script_path) if script_path else None
 
-print(s('Client', 30), s('SSH', 40), s('Résultat', 0))
+# Mode apt update / upgrade (aucune autre option) : colonne Système en plus
+mode_apt = not (get_db_manager or get_reset_passwd or script_path or get_system or dirty_frag)
+if mode_apt:
+    print(s('Client', 30), s('SSH', 40), s('Système', 18), s('Résultat', 0))
+else:
+    print(s('Client', 30), s('SSH', 40), s('Résultat', 0))
 print('-' * 120)
 
 
@@ -335,15 +340,20 @@ def traiter(serveur, direct=False):
         os.popen(cmd_upd).read()
         cmd = (
             "(ssh -o ConnectTimeout=10 -o BatchMode=yes %s "
-            "'apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
+            "'echo OSR:$(. /etc/os-release; echo $ID $VERSION_CODENAME); "
+            "apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
         )
     else:
         cmd = (
             "(ssh -o ConnectTimeout=15 -o BatchMode=yes %s "
-            "'apt-get update -qq 2>/dev/null && apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
+            "'echo OSR:$(. /etc/os-release; echo $ID $VERSION_CODENAME); "
+            "apt-get update -qq 2>/dev/null && apt-get --simulate dist-upgrade 2>/dev/null') 2>&1" % acces_ssh
         )
     lines   = os.popen(cmd).read().splitlines()
     paquets = [l.strip()[5:] for l in lines if l.startswith('Inst ')]  # seules les vraies lignes de paquets
+    # Distribution et version (ex. : Debian Bullseye, Ubuntu Jammy)
+    osr     = next((l[4:] for l in lines if l.startswith('OSR:')), '')
+    systeme = ' '.join(m.capitalize() for m in osr.split())
 
     # Détecter les erreurs SSH (connexion refusée, timeout, etc.)
     ssh_error = next((l.strip() for l in lines if l.lower().startswith('ssh:')
@@ -352,13 +362,13 @@ def traiter(serveur, direct=False):
                       or 'connection refused' in l.lower()
                       or 'permission denied' in l.lower()), None)
     if ssh_error:
-        p(s(client, 30), s(acces_ssh, 40), 'ERREUR SSH : %s' % ssh_error)
+        p(s(client, 30), s(acces_ssh, 40), s(systeme, 18), 'ERREUR SSH : %s' % ssh_error)
         save_action(serveur['id'], action_label, ['ERREUR SSH : %s' % ssh_error])
         return sortie
 
     commentaire_lines = []
     if not paquets:
-        p(s(client, 30), s(acces_ssh, 40), 'OK - à jour')
+        p(s(client, 30), s(acces_ssh, 40), s(systeme, 18), 'OK - à jour')
         commentaire_lines.append('OK - à jour')
         if reboot:
             # Vérifier qu'aucun apt/dpkg n'est en cours via le verrou
@@ -381,7 +391,7 @@ def traiter(serveur, direct=False):
                 p(' ' * 62, '>>> Reboot lancé')
                 commentaire_lines.append('Reboot lancé')
     else:
-        p(s(client, 30), s(acces_ssh, 40), '%d paquet(s) à mettre à jour' % len(paquets))
+        p(s(client, 30), s(acces_ssh, 40), s(systeme, 18), '%d paquet(s) à mettre à jour' % len(paquets))
         commentaire_lines.append('%d paquet(s) à mettre à jour :' % len(paquets))
         commentaire_lines.extend(paquets)
         if upgrade:
