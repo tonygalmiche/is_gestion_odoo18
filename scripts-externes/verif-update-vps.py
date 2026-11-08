@@ -46,6 +46,13 @@ if not args.update and not args.dist_upgrade and not args.reboot and not args.di
     parser.print_help()
     sys.exit(0)
 
+# --get-logiciels porte sur tous les serveurs actifs (voir _domain) : interdit avec une autre action
+# pour que l'élargissement ne s'applique jamais à apt, au reboot ou à l'exécution d'un script
+if args.get_logiciels and (args.update or args.dist_upgrade or args.reboot or args.dirty_frag or args.get_system
+                           or args.get_database_manager or args.get_reset_password or args.script):
+    print("ERREUR : --get-logiciels ne peut pas être combiné avec une autre action")
+    sys.exit(1)
+
 filtre          = args.filtre.lower()
 do_update       = args.update
 upgrade         = args.dist_upgrade or args.reboot
@@ -126,11 +133,15 @@ def save_action(serveur_id, label, lines):
 
 
 # Définir le domain et fields par défaut
-_domain = [
-    ('active', '=', True),
-    ('upgrade_auto', '=', True),
-    ('date_debut_maintenance', '!=', False),
-]
+# --get-logiciels (lecture seule, suivi des CVE) : tous les serveurs actifs, même sans upgrade auto ni maintenance
+if get_logiciels:
+    _domain = [('active', '=', True)]
+else:
+    _domain = [
+        ('active', '=', True),
+        ('upgrade_auto', '=', True),
+        ('date_debut_maintenance', '!=', False),
+    ]
 _fields = ['id', 'name', 'adresse_ip', 'partner_id', 'acces_ssh', 'systeme_id']
 
 # Modifier le domain et fields selon les options
@@ -319,14 +330,21 @@ def traiter(serveur, direct=False):
                 models.execute_kw(db, uid, password, 'is.serveur.logiciel', 'unlink', [anciens])
             if vals:
                 models.execute_kw(db, uid, password, 'is.serveur.logiciel', 'create', [vals])
-        # Terminal : version paquet à la place de la version amont quand celle-ci ne suffit pas
-        # à distinguer les versions (ex. noyaux Ubuntu 7.0.0-14.14 et 7.0.0-15.15 → 7.0.0)
+        # Terminal : version paquet en plus de la version amont quand celle-ci ne suffit pas
+        # à distinguer les versions (ex. noyaux Ubuntu 7.0.0-34.34 et 7.0.0-43.43, deux Odoo 18.0)
         paquets_par_version = {}
         for lg in logiciels:
             for v, pq in releves[lg['id']]:
                 paquets_par_version.setdefault(v, set()).add(pq)
         ambigues = {v for v, pqs in paquets_par_version.items() if len(pqs) > 1}
-        resume = ' | '.join('%s: %s' % (lg['name'], ', '.join(pq if v in ambigues and pq else v for v, pq in releves[lg['id']]))
+
+        def affiche(v, pq):
+            if v not in ambigues or not pq:
+                return v
+            # Paquet qui contient déjà la version amont (ex. 7.0.0-43.43) : paquet seul, sinon "18.0 (2026-10-09)"
+            return pq if pq.startswith(v) else '%s (%s)' % (v, pq)
+
+        resume = ' | '.join('%s: %s' % (lg['name'], ', '.join(affiche(v, pq) for v, pq in releves[lg['id']]))
                             for lg in logiciels if releves[lg['id']])
         p(s(client, 30), s(acces_ssh, 40), resume or 'Aucun logiciel trouvé')
         save_action(serveur['id'], action_label,
