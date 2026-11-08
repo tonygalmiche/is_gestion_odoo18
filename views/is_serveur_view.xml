@@ -60,6 +60,16 @@
                                 </list>
                             </field>
                         </page>
+                        <page string="Logiciels">
+                            <field name="logiciel_ids" readonly="1">
+                                <list>
+                                    <field name="logiciel_id"/>
+                                    <field name="version"/>
+                                    <field name="version_paquet"/>
+                                    <field name="date_releve"/>
+                                </list>
+                            </field>
+                        </page>
                     </notebook>
                 </sheet>
                 <chatter reload_on_attachment="True"/>

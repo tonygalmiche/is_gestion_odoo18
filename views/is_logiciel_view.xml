@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- is.logiciel -->
+    <record id="is_logiciel_list" model="ir.ui.view">
+        <field name="name">is.logiciel.list</field>
+        <field name="model">is.logiciel</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="script"/>
+                <field name="parametre"/>
+            </list>
+        </field>
+    </record>
+    <record id="is_logiciel_form" model="ir.ui.view">
+        <field name="name">is.logiciel.form</field>
+        <field name="model">is.logiciel</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <field name="active" invisible="1"/>
+                    <widget name="web_ribbon" title="Archivé" bg_color="text-bg-danger" invisible="active"/>
+                    <group>
+                        <field name="name"/>
+                        <field name="sequence"/>
+                        <field name="script"/>
+                        <field name="parametre"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="is_logiciel_search" model="ir.ui.view">
+        <field name="name">is.logiciel.search</field>
+        <field name="model">is.logiciel</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="script"/>
+                <filter name="archived" string="Archivés" domain="[('active','=',False)]"/>
+            </search>
+        </field>
+    </record>
+    <record id="is_logiciel_action" model="ir.actions.act_window">
+        <field name="name">Logiciels</field>
+        <field name="res_model">is.logiciel</field>
+        <field name="limit">100</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+
+    <!-- is.serveur.logiciel -->
+    <record id="is_serveur_logiciel_list" model="ir.ui.view">
+        <field name="name">is.serveur.logiciel.list</field>
+        <field name="model">is.serveur.logiciel</field>
+        <field name="arch" type="xml">
+            <list create="0">
+                <field name="logiciel_id"    optional="show"/>
+                <field name="partner_id"     optional="show"/>
+                <field name="serveur_id"     optional="show" widget="many2one_clickable"/>
+                <field name="service_id"     optional="show"/>
+                <field name="systeme_id"     optional="hide"/>
+                <field name="version"        optional="show"/>
+                <field name="version_paquet" optional="show"/>
+                <field name="date_releve"    optional="show"/>
+            </list>
+        </field>
+    </record>
+    <record id="is_serveur_logiciel_form" model="ir.ui.view">
+        <field name="name">is.serveur.logiciel.form</field>
+        <field name="model">is.serveur.logiciel</field>
+        <field name="arch" type="xml">
+            <form create="0">
+                <sheet>
+                    <group>
+                        <field name="serveur_id"/>
+                        <field name="partner_id"/>
+                        <field name="service_id"/>
+                        <field name="systeme_id"/>
+                        <field name="logiciel_id"/>
+                        <field name="version"/>
+                        <field name="version_paquet"/>
+                        <field name="date_releve"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="is_serveur_logiciel_search" model="ir.ui.view">
+        <field name="name">is.serveur.logiciel.search</field>
+        <field name="model">is.serveur.logiciel</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="logiciel_id"/>
+                <field name="version"/>
+                <field name="version_paquet"/>
+                <field name="serveur_id"/>
+                <field name="partner_id"/>
+                <field name="service_id"/>
+                <field name="systeme_id"/>
+                <group expand="0" string="Group By...">
+                    <filter name="group_by_logiciel_id" string="Logiciel" context="{'group_by': 'logiciel_id'}"/>
+                    <filter name="group_by_version"     string="Version"  context="{'group_by': 'version'}"/>
+                    <filter name="group_by_partner_id"  string="Client"   context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_by_serveur_id"  string="Serveur"  context="{'group_by': 'serveur_id'}"/>
+                    <filter name="group_by_service_id"  string="Service"  context="{'group_by': 'service_id'}"/>
+                    <filter name="group_by_systeme_id"  string="Système"  context="{'group_by': 'systeme_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    <record id="is_serveur_logiciel_action" model="ir.actions.act_window">
+        <field name="name">Logiciels installés</field>
+        <field name="res_model">is.serveur.logiciel</field>
+        <field name="limit">200</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_group_by_logiciel_id': 1}</field>
+    </record>
+</odoo>

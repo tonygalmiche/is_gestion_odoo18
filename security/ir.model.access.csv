@@ -10,3 +10,6 @@ access_is_type_vps,access_is_type_vps,model_is_type_vps,base.group_user,1,1,1,1
 access_is_service,access_is_service,model_is_service,base.group_user,1,1,1,1
 access_is_serveur_action,access_is_serveur_action,model_is_serveur_action,base.group_user,1,1,1,1
 access_is_cve,access_is_cve,model_is_cve,base.group_user,1,1,1,1
+access_is_logiciel_user,access_is_logiciel_user,model_is_logiciel,base.group_user,1,0,0,0
+access_is_logiciel_system,access_is_logiciel_system,model_is_logiciel,base.group_system,1,1,1,1
+access_is_serveur_logiciel,access_is_serveur_logiciel,model_is_serveur_logiciel,base.group_user,1,1,1,1

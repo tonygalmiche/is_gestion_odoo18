@@ -25,8 +25,10 @@ Module Gestion Odoo 18 pour InfoSaône
     ],
     "data" : [
         "security/ir.model.access.csv",
+        "data/is_logiciel_data.xml",
         "views/is_affaire_view.xml",
         "views/is_serveur_view.xml",
+        "views/is_logiciel_view.xml",
         "views/is_cve_view.xml",
         "views/is_suivi_temps_view.xml",
         "views/is_suivi_temps_client_view.xml",

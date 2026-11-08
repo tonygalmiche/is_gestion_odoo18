@@ -5,6 +5,8 @@ import xmlrpc.client
 import os
 import sys
 import argparse
+import shlex
+import subprocess
 import time
 import urllib.request
 import ssl
@@ -32,6 +34,7 @@ parser.add_argument('--dist-upgrade', action='store_true', help='Lancer apt-get 
 parser.add_argument('--reboot',       action='store_true', help='Redémarrer le serveur après le dist-upgrade (implique --dist-upgrade)')
 parser.add_argument('--dirty-frag',   action='store_true', help='Vérifier/appliquer la mitigation DirtyFrag (CVE-2026-43284/43500)')
 parser.add_argument('--get-system',            action='store_true', help='Récupérer le système, la version, le noyau et sa date de mise à jour')
+parser.add_argument('--get-logiciels',         action='store_true', help='Relever les versions des logiciels à surveiller (is.logiciel, scripts du dossier logiciels/) et les enregistrer dans Odoo')
 parser.add_argument('--get-database-manager',  action='store_true', help='Vérifier si l\'accès au gestionnaire de base de données Odoo est bloqué')
 parser.add_argument('--get-reset-password',    action='store_true', help='Vérifier si la page de réinitialisation du mot de passe Odoo est accessible')
 parser.add_argument('--add-action',            action='store_true', help='Enregistrer l\'action dans Odoo (is.serveur.action)')
@@ -39,7 +42,7 @@ parser.add_argument('--script',                type=str, help='Copier et exécut
 parser.add_argument('--jobs',                  type=int, default=10, help='Nombre de serveurs traités en parallèle (défaut: 10). --dist-upgrade et --reboot restent séquentiels')
 args    = parser.parse_args()
 
-if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system and not args.get_database_manager and not args.get_reset_password and not args.script:
+if not args.update and not args.dist_upgrade and not args.reboot and not args.dirty_frag and not args.get_system and not args.get_logiciels and not args.get_database_manager and not args.get_reset_password and not args.script:
     parser.print_help()
     sys.exit(0)
 
@@ -49,6 +52,7 @@ upgrade         = args.dist_upgrade or args.reboot
 reboot          = args.reboot
 dirty_frag      = args.dirty_frag
 get_system      = args.get_system
+get_logiciels   = args.get_logiciels
 get_db_manager    = args.get_database_manager
 get_reset_passwd  = args.get_reset_password
 add_action        = args.add_action
@@ -64,6 +68,8 @@ elif dirty_frag:
     action_label = 'Mitigation DirtyFrag'
 elif get_system:
     action_label = 'Récupération info système'
+elif get_logiciels:
+    action_label = 'Relevé des logiciels'
 elif get_db_manager:
     action_label = 'Vérification gestionnaire BDD'
 elif get_reset_passwd:
@@ -147,8 +153,37 @@ if script_path and not os.path.isfile(script_path):
 
 script_basename = os.path.basename(script_path) if script_path else None
 
+# --get-logiciels : liste des logiciels (is.logiciel) et programme bash envoyé à chaque serveur.
+# Chaque logiciel = un script du dossier logiciels/ + paramètres, exécuté dans un sous-shell,
+# sa sortie ("version;version paquet" par ligne) précédée d'un repère @@LOGICIEL:<id>.
+LOGICIELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logiciels')
+logiciels        = []
+programme_releve = ''
+if get_logiciels:
+    logiciels = models.execute_kw(db, uid, password, 'is.logiciel', 'search_read', [[]],
+        {'fields': ['id', 'name', 'script', 'parametre'], 'order': 'sequence,name'})
+    if not logiciels:
+        print("ERREUR : aucun logiciel actif dans Odoo (is.logiciel)")
+        sys.exit(1)
+    for lg in logiciels:
+        script = lg['script'] or ''
+        chemin = os.path.join(LOGICIELS_DIR, script)
+        if not script or os.path.basename(script) != script or not os.path.isfile(chemin):
+            print("ERREUR : script '%s' du logiciel '%s' absent du dossier %s" % (script, lg['name'], LOGICIELS_DIR))
+            sys.exit(1)
+        try:
+            params = shlex.split(lg['parametre'] or '')
+        except ValueError as e:
+            print("ERREUR : paramètre du logiciel '%s' invalide : %s" % (lg['name'], e))
+            sys.exit(1)
+        with open(chemin, encoding='utf-8') as f:
+            contenu = f.read()
+        programme_releve += "echo '@@LOGICIEL:%d'\n(\nset -- %s\n%s\n)\n" % (
+            lg['id'], ' '.join(shlex.quote(x) for x in params), contenu)
+    programme_releve += 'exit 0\n'
+
 # Mode apt update / upgrade (aucune autre option) : colonne Système en plus
-mode_apt = not (get_db_manager or get_reset_passwd or script_path or get_system or dirty_frag)
+mode_apt = not (get_db_manager or get_reset_passwd or script_path or get_system or get_logiciels or dirty_frag)
 if mode_apt:
     print(s('Client', 30), s('SSH', 40), s('Système', 18), s('Résultat', 0))
 else:
@@ -240,6 +275,64 @@ def traiter(serveur, direct=False):
         return sortie
 
     acces_ssh = serveur['acces_ssh']
+
+    # --- Relevé des versions des logiciels (une seule connexion SSH, lecture seule) ---
+    if get_logiciels:
+        try:
+            res = subprocess.run(
+                ['ssh', '-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', acces_ssh, 'bash -s'],
+                input=programme_releve, capture_output=True, text=True, timeout=120)
+            rc, out, err = res.returncode, res.stdout, res.stderr
+        except subprocess.TimeoutExpired:
+            rc, out, err = 255, '', 'délai dépassé (120 s)'
+        if rc == 255:
+            # Erreur SSH : lignes existantes conservées
+            msg = 'ERREUR SSH : %s' % (err.strip().splitlines()[-1] if err.strip() else 'pas de réponse')
+            p(s(client, 30), s(acces_ssh, 40), msg)
+            save_action(serveur['id'], action_label, [msg])
+            return sortie
+        releves = {lg['id']: [] for lg in logiciels}
+        courant = None
+        for ligne in out.splitlines():
+            if ligne.startswith('@@LOGICIEL:'):
+                courant = int(ligne[len('@@LOGICIEL:'):])
+                continue
+            ligne = ligne.strip()
+            if courant not in releves or not ligne:
+                continue
+            version, _, paquet = ligne.partition(';')
+            valeur = (version.strip(), paquet.strip())
+            if valeur not in releves[courant]:
+                releves[courant].append(valeur)
+        date_releve = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        vals = [{
+            'serveur_id':     serveur['id'],
+            'logiciel_id':    lg['id'],
+            'version':        version,
+            'version_paquet': paquet,
+            'date_releve':    date_releve,
+        } for lg in logiciels for version, paquet in releves[lg['id']]]
+        with odoo_lock:
+            anciens = models.execute_kw(db, uid, password, 'is.serveur.logiciel', 'search',
+                [[('serveur_id', '=', serveur['id']), ('logiciel_id', 'in', [lg['id'] for lg in logiciels])]])
+            if anciens:
+                models.execute_kw(db, uid, password, 'is.serveur.logiciel', 'unlink', [anciens])
+            if vals:
+                models.execute_kw(db, uid, password, 'is.serveur.logiciel', 'create', [vals])
+        # Terminal : version paquet à la place de la version amont quand celle-ci ne suffit pas
+        # à distinguer les versions (ex. noyaux Ubuntu 7.0.0-14.14 et 7.0.0-15.15 → 7.0.0)
+        paquets_par_version = {}
+        for lg in logiciels:
+            for v, pq in releves[lg['id']]:
+                paquets_par_version.setdefault(v, set()).add(pq)
+        ambigues = {v for v, pqs in paquets_par_version.items() if len(pqs) > 1}
+        resume = ' | '.join('%s: %s' % (lg['name'], ', '.join(pq if v in ambigues and pq else v for v, pq in releves[lg['id']]))
+                            for lg in logiciels if releves[lg['id']])
+        p(s(client, 30), s(acces_ssh, 40), resume or 'Aucun logiciel trouvé')
+        save_action(serveur['id'], action_label,
+            ['%s : %s' % (lg['name'], v + (' (%s)' % pq if pq else ''))
+             for lg in logiciels for v, pq in releves[lg['id']]] or ['Aucun logiciel trouvé'])
+        return sortie
 
     # --- Récupération info système ---
     if get_system:

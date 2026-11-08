@@ -74,6 +74,13 @@
         action="is_serveur_action_action"
     />
     <menuitem
+        id="is_serveur_logiciel_menu"
+        name="Logiciels installés"
+        parent="is_serveur_main_menu"
+        sequence="30"
+        action="is_serveur_logiciel_action"
+    />
+    <menuitem
         id="is_systeme_menu"
         name="Systèmes"
         parent="is_serveur_main_menu"
@@ -93,6 +100,13 @@
         parent="is_serveur_main_menu"
         sequence="920"
         action="is_service_action"
+    />
+    <menuitem
+        id="is_logiciel_menu"
+        name="Logiciels"
+        parent="is_serveur_main_menu"
+        sequence="930"
+        action="is_logiciel_action"
     />
 
 

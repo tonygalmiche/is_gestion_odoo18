@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Liste initiale des logiciels relevés par verif-update-vps.py (option get-logiciels) -->
+    <data noupdate="1">
+        <record id="is_logiciel_distribution" model="is.logiciel">
+            <field name="name">Distribution</field>
+            <field name="sequence">10</field>
+            <field name="script">distribution.sh</field>
+        </record>
+        <record id="is_logiciel_noyau_actif" model="is.logiciel">
+            <field name="name">Noyau Linux (actif)</field>
+            <field name="sequence">20</field>
+            <field name="script">noyau-actif.sh</field>
+        </record>
+        <record id="is_logiciel_noyau_installe" model="is.logiciel">
+            <field name="name">Noyau Linux (installé)</field>
+            <field name="sequence">30</field>
+            <field name="script">paquet.sh</field>
+            <field name="parametre">linux-image-[0-9]*</field>
+        </record>
+        <record id="is_logiciel_odoo" model="is.logiciel">
+            <field name="name">Odoo</field>
+            <field name="sequence">40</field>
+            <field name="script">odoo.sh</field>
+        </record>
+    </data>
+</odoo>
