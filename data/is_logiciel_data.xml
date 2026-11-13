@@ -23,5 +23,12 @@
             <field name="sequence">40</field>
             <field name="script">odoo.sh</field>
         </record>
+        <!-- Serveur PostgreSQL : postgresql-15, postgresql-9.4… (pas les extensions postgresql-15-pgvector ni le client) -->
+        <record id="is_logiciel_postgresql" model="is.logiciel">
+            <field name="name">PostgreSQL</field>
+            <field name="sequence">50</field>
+            <field name="script">paquet.sh</field>
+            <field name="parametre">postgresql-[0-9][0-9] postgresql-9.[0-9]</field>
+        </record>
     </data>
 </odoo>
