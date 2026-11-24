@@ -380,9 +380,11 @@ def lignes_existantes(chemin, serveurs_releves):
     date_ancienne = m.group(1) if m else ''
     garder = []
     for ligne in texte.splitlines():
-        if not ligne.startswith('| ') or ligne.startswith('| Client |'):
+        if not ligne.startswith('| ') or ligne.startswith('| Client |') or ligne.startswith('| Serveur |'):
             continue
         cellules = [c.strip() for c in ligne.strip().strip('|').split(' | ')]
+        if '<br>' in cellules[0]:  # client et serveur dans la même cellule
+            cellules = cellules[0].split('<br>', 1) + cellules[1:]
         if len(cellules) < 2 or cellules[1] in serveurs_releves:
             continue
         if len(cellules) == len(COLONNES) - 1:  # ancien format, sans la colonne Relevé
@@ -416,11 +418,12 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         'Comment vérifier et corriger chaque point : [Sécuriser Odoo](README.md#points-à-vérifier-sur-un-serveur), '
         '[CVE Odoo du 23/11/2026](../../cve/Odoo-2026-11-23.md).',
         '',
-        '| ' + ' | '.join(c[3] for c in COLONNES) + ' |',
-        '|' + '---|' * len(COLONNES),
+        # client et serveur dans la même cellule (« Client<br>serveur ») pour gagner une colonne
+        '| Serveur | ' + ' | '.join(c[3] for c in COLONNES[2:]) + ' |',
+        '|' + '---|' * (len(COLONNES) - 1),
     ]
     for cellules in nouvelles:
-        md.append('| ' + ' | '.join(cellules) + ' |')
+        md.append('| ' + ' | '.join(['%s<br>%s' % (cellules[0], cellules[1])] + cellules[2:]) + ' |')
     md += [
         '',
         '%d installation(s) Odoo.' % len(nouvelles),
