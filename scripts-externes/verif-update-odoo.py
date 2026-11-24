@@ -394,9 +394,25 @@ def lignes_existantes(chemin, serveurs_releves):
     return garder
 
 
+SECTION_MANUELLE = '## À faire'
+
+
+def section_manuelle(chemin):
+    """Section « À faire » écrite à la main en fin de page : gardée telle quelle à chaque relevé."""
+    try:
+        with open(chemin, encoding='utf-8') as f:
+            texte = f.read()
+    except OSError:
+        return ''
+    i = texte.find('\n' + SECTION_MANUELLE + '\n')
+    return texte[i + 1:].rstrip() if i >= 0 else ''
+
+
 def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
     """partiel (relevé filtré) : les lignes des autres serveurs sont gardées.
-    Serveur en échec SSH : son ancienne ligne est gardée si elle existe."""
+    Serveur en échec SSH : son ancienne ligne est gardée si elle existe.
+    Section « À faire » en fin de page : écrite à la main, gardée."""
+    manuelle = section_manuelle(chemin)
     reussis = {l['serveur'] for l in lignes if not l['echec']}
     anciennes = lignes_existantes(chemin, reussis)
     if not partiel:
@@ -413,7 +429,8 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         '[← Sécuriser Odoo](README.md)',
         '',
         'Page écrite par `verif-update-odoo.py --markdown` (dépôt `is_gestion_odoo18`, `scripts-externes`) : '
-        '**ne pas la modifier à la main**, relancer le script (avec un filtre pour les serveurs derrière un VPN : '
+        '**ne pas la modifier à la main** (sauf la section « À faire » en fin de page, gardée par le script), '
+        'relancer le script (avec un filtre pour les serveurs derrière un VPN : '
         'seules leurs lignes sont remplacées). Date de chaque ligne : colonne « Relevé ». '
         'Comment vérifier et corriger chaque point : [Sécuriser Odoo](README.md#points-à-vérifier-sur-un-serveur), '
         '[CVE Odoo du 23/11/2026](../../cve/Odoo-2026-11-23.md).',
@@ -429,15 +446,21 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         '%d installation(s) Odoo.' % len(nouvelles),
         '',
         '## Lecture des colonnes',
-        '- Sources : date du dernier commit git (sinon de `release.py`) ; ⚠️ plus de 6 mois, ❌ plus de 2 ans.',
-        '- Gestion des bases, réinitialisation du mot de passe, inscription, ports : testés depuis le poste ; ✅ = bloqué ou fermé.',
-        '- SQLi : patch de l\'avis dans `odoo/models.py` ; 17.0 et plus non concernés ; 12.0 et moins sans patch.',
-        '- XSS : correctif dans `odoo/tools/mail.py` (« stabilize » et « refine HTML normalization ») ; « partiel » = 16.0 à jour, '
-        'second commit seulement dans la PR [OCA/OCB 1378](https://github.com/OCA/OCB/pull/1378) ; avant 16.0 : version de '
-        'libxml2 chargée par le Python d\'Odoo (⚠️ ≥ 2.10 = atténué, ❌ plus ancienne ou inconnue).',
-        '- Journaux : lignes du journal Odoo avec les motifs de l\'avis ; « forts » (`pg_sleep(3)`, `as z --`) = tentative '
-        'quasi certaine ; « faibles » (`InvalidTextRepresentation`) = aussi des erreurs ordinaires, à regarder.',
+        '',
+        '| Colonne | Lecture |',
+        '|---|---|',
+        '| Sources | Date du dernier commit git (sinon de `release.py`) ; ⚠️ plus de 6 mois, ❌ plus de 2 ans |',
+        '| Gestion des bases, réinit. mot de passe, inscription, ports | Testés depuis le poste ; ✅ = bloqué ou fermé ; '
+        '« pas de web » = ni HTTPS ni port 8069 ne répondent |',
+        '| SQLi | Patch de l\'avis dans `odoo/models.py` ; 17.0 et plus non concernés ; 12.0 et moins sans patch |',
+        '| XSS | 16.0 et plus : correctif dans `odoo/tools/mail.py` (« stabilize » et « refine HTML normalization ») ; '
+        '« partiel » = 16.0 à jour, second commit seulement dans la PR [OCA/OCB 1378](https://github.com/OCA/OCB/pull/1378). '
+        'Avant 16.0 : version de libxml2 chargée par le Python d\'Odoo (⚠️ ≥ 2.10 = atténué, ❌ plus ancienne ou inconnue) |',
+        '| Journaux | Lignes du journal Odoo avec les motifs de l\'avis ; « forts » (`pg_sleep(3)`, `as z --`) = tentative '
+        'quasi certaine ; « faibles » (`InvalidTextRepresentation`) = aussi des erreurs ordinaires, à regarder |',
     ]
+    if manuelle:
+        md += ['', manuelle]
     with open(chemin, 'w', encoding='utf-8') as f:
         f.write('\n'.join(md) + '\n')
 
