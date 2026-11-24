@@ -119,9 +119,26 @@ if [ -n "$FICHIERS" ]; then
                  esac
              done | $BAS env LC_ALL=C grep -aE "pg_sleep\(3\)|as z --|InvalidTextRepresentation|invalid input syntax for type integer")
     FORT=$(printf '%s\n' "$TROUVE" | grep -cE "pg_sleep\(3\)|as z --")
-    FAIBLE=$(printf '%s\n' "$TROUVE" | grep -cE "InvalidTextRepresentation|invalid input syntax for type integer")
+    # Erreur « texte à la place d'un nombre » comptée seulement si la valeur refusée contient du SQL
+    # (erreurs ordinaires ignorées : NewId_…, datapoint_…, mot saisi, formule n8n non remplacée)
+    FAIBLE=$(printf '%s\n' "$TROUVE" | grep -E "InvalidTextRepresentation|invalid input syntax for type integer" \
+             | grep -ciE "select|union|sleep|cast|--")
 fi
 echo "LOGS;$FORT;$FAIBLE;$NB"
+# Rotation des journaux : fichier de /etc/logrotate.d/ qui cite odoo, ou option logrotate d'Odoo ;
+# taille du plus gros journal non compressé, en Mo
+ROT=""
+grep -qsi "odoo" /etc/logrotate.d/* 2>/dev/null && ROT="logrotate"
+grep -qsiE "^ *logrotate *= *(true|1)" /etc/odoo*.conf /etc/odoo*/*.conf /opt/odoo*/*.conf 2>/dev/null \
+    && ROT="${ROT:+$ROT, }option Odoo"
+MO=0
+for F in $FICHIERS; do
+    case "$F" in
+        *.gz) ;;
+        *) T=$(( $(stat -c %s "$F" 2>/dev/null || echo 0) / 1048576 )); [ "$T" -gt "$MO" ] && MO=$T ;;
+    esac
+done
+echo "ROT;$ROT;$MO"
 '''
 
 
@@ -222,6 +239,9 @@ def releve_ssh(acces_ssh):
                              'libxml2': champs[7]})
         elif champs[0] == 'LOGS' and len(champs) == 4:
             logs = {'fort': int(champs[1] or 0), 'faible': int(champs[2] or 0), 'fichiers': int(champs[3] or 0)}
+        elif champs[0] == 'ROT' and len(champs) == 3 and logs is not None:
+            logs['rotation'] = champs[1]
+            logs['mo'] = int(champs[2] or 0)
     return installs, logs, None
 
 
@@ -279,6 +299,16 @@ def statut_xss(inst):
     return KO, 'libxml2 %s' % inst['libxml2']
 
 
+def statut_rotation(logs):
+    if logs is None or 'rotation' not in logs:
+        return WARN, '?'
+    if not logs['fichiers']:
+        return WARN, 'aucun journal'
+    if logs['rotation']:
+        return OK, logs['rotation']
+    return KO, 'aucune (%d Mo)' % logs['mo']
+
+
 def statut_logs(logs):
     if logs is None:
         return WARN, '?'
@@ -319,14 +349,15 @@ def traiter(serveur):
         # serveur injoignable (ex. VPN non lancé) : la ligne déjà dans le relevé Markdown sera gardée
         entete['echec'] = bool(erreur and (erreur.startswith('ERREUR SSH') or erreur.startswith('délai')))
         return [dict(entete, **http, version=service_name, date=msg, sqli=msg, xss=msg,
-                     logs=statut_logs(logs))]
+                     logs=statut_logs(logs), rotation=statut_rotation(logs))]
     lignes = []
     for inst in installs:
         v = inst['version']
         if len(installs) > 1:
             v += ' (%s)' % inst['dossier'].rstrip('/').split('/')[-1]
         lignes.append(dict(entete, **http, version=v, date=statut_date(inst['date']),
-                           sqli=statut_sqli(inst), xss=statut_xss(inst), logs=statut_logs(logs)))
+                           sqli=statut_sqli(inst), xss=statut_xss(inst), logs=statut_logs(logs),
+                           rotation=statut_rotation(logs)))
     return lignes
 
 
@@ -343,6 +374,7 @@ COLONNES = [
     ('sqli',    'SQLi',          16, 'SQLi (130028)'),
     ('xss',     'XSS',           22, 'XSS (130029)'),
     ('logs',    'Journaux',      22, 'Journaux'),
+    ('rotation', 'Rotation',     20, 'Rotation des journaux'),
     ('releve',  'Relevé',        16, 'Relevé'),
 ]
 
@@ -376,8 +408,6 @@ def lignes_existantes(chemin, serveurs_releves):
             texte = f.read()
     except OSError:
         return []
-    m = re.search(r'Relevé du (\d\d/\d\d/\d{4} \d\d:\d\d)', texte)
-    date_ancienne = m.group(1) if m else ''
     garder = []
     for ligne in texte.splitlines():
         if not ligne.startswith('| ') or ligne.startswith('| Client |') or ligne.startswith('| Serveur |'):
@@ -387,8 +417,8 @@ def lignes_existantes(chemin, serveurs_releves):
             cellules = cellules[0].split('<br>', 1) + cellules[1:]
         if len(cellules) < 2 or cellules[1] in serveurs_releves:
             continue
-        if len(cellules) == len(COLONNES) - 1:  # ancien format, sans la colonne Relevé
-            cellules.append(date_ancienne)
+        if len(cellules) == len(COLONNES) - 1:  # ancien format, sans la colonne Rotation (avant Relevé)
+            cellules.insert(len(cellules) - 1, ICONE_MD[WARN] + ' ?')
         if len(cellules) == len(COLONNES):
             garder.append(cellules)
     return garder
@@ -457,7 +487,10 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         '« partiel » = 16.0 à jour, second commit seulement dans la PR [OCA/OCB 1378](https://github.com/OCA/OCB/pull/1378). '
         'Avant 16.0 : version de libxml2 chargée par le Python d\'Odoo (⚠️ ≥ 2.10 = atténué, ❌ plus ancienne ou inconnue) |',
         '| Journaux | Lignes du journal Odoo avec les motifs de l\'avis ; « forts » (`pg_sleep(3)`, `as z --`) = tentative '
-        'quasi certaine ; « faibles » (`InvalidTextRepresentation`) = aussi des erreurs ordinaires, à regarder |',
+        'quasi certaine ; « faibles » = erreur `InvalidTextRepresentation` dont la valeur refusée contient du SQL '
+        '(`select`, `union`, `sleep`, `cast`, `--`), à regarder ; erreurs ordinaires non comptées |',
+        '| Rotation des journaux | « logrotate » = fichier de `/etc/logrotate.d/` qui cite odoo ; « option Odoo » = '
+        '`logrotate = True` dans la configuration d\'Odoo ; ❌ aucune = taille du plus gros journal non compressé |',
     ]
     if manuelle:
         md += ['', manuelle]
