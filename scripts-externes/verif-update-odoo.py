@@ -608,13 +608,14 @@ def section_manuelle(chemin):
     return texte[i + 1:].rstrip() if i >= 0 else ''
 
 
-def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
+def ecrire_markdown(chemin, lignes, partiel, noms_serveurs, serveurs_odoo):
     """partiel (relevé filtré) : les lignes des autres serveurs sont gardées.
     Serveur en échec SSH : son ancienne ligne est gardée si elle existe.
+    Serveur qui n'est plus un serveur Odoo actif (serveurs_odoo) : sa ligne est retirée, même en relevé filtré.
     Section « À faire » en fin de page : écrite à la main, gardée."""
     manuelle = section_manuelle(chemin)
     reussis = {l['serveur'] for l in lignes if not l['echec']}
-    anciennes = lignes_existantes(chemin, reussis)
+    anciennes = [c for c in lignes_existantes(chemin, reussis) if c[1] in serveurs_odoo]
     if not partiel:
         # relevé complet : seules les anciennes lignes des serveurs en échec sont gardées
         anciennes = [c for c in anciennes if c[1] in noms_serveurs]
@@ -719,6 +720,9 @@ serveurs = models.execute_kw(db, uid, password, 'is.serveur', 'search_read',
         'limit': 200,
         'order': 'partner_id,name',
     })
+# Tous les serveurs Odoo actifs (sans filtre) : lignes des autres serveurs retirées du relevé Markdown
+serveurs_odoo = {sv['name'] for sv in models.execute_kw(db, uid, password, 'is.serveur', 'search_read',
+    [[('active', '=', True), ('service_id.name', 'ilike', 'odoo')]], {'fields': ['name'], 'limit': 500})}
 serveurs = [sv for sv in serveurs
             if not filtre
             or filtre in (sv['partner_id'] and sv['partner_id'][1] or '').lower()
@@ -755,5 +759,5 @@ print('-' * largeur)
 print('%d serveur(s) Odoo, %d installation(s)' % (len(serveurs), len(lignes)))
 
 if args.markdown:
-    ecrire_markdown(args.markdown, lignes, bool(filtre or version), {sv['name'] for sv in serveurs})
+    ecrire_markdown(args.markdown, lignes, bool(filtre or version), {sv['name'] for sv in serveurs}, serveurs_odoo)
     print('Relevé écrit dans %s' % args.markdown)
