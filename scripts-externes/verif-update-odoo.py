@@ -3,8 +3,10 @@
 """Suivi de la sécurité des serveurs Odoo (is.serveur dont le service contient « odoo »), lecture seule.
 
 Depuis le poste (HTTPS et ports) :
-  - gestionnaire de bases, réinitialisation du mot de passe, inscription publique (/web/signup) ;
-  - ports 8069 et 8072 joignables de l'extérieur.
+  - gestionnaire de bases (fermé par nginx, ou page affichée avec opérations bloquées par list_db = False),
+    réinitialisation du mot de passe, inscription publique (/web/signup) ;
+  - accès direct : ports 8069 et 8072 joignables de l'extérieur, Odoo par l'adresse IP (pas de bloc
+    default_server dans nginx), /xmlrpc non bloqué par nginx.
 Par SSH (une connexion par serveur, commandes en lecture seule), pour chaque installation /opt/odoo* :
   - version et date des sources (dernier commit git, sinon date de release.py) ;
   - CVE-2026-130028 (injection SQL, ≤ 16) : patch de l'avis présent dans odoo/models.py ;
@@ -62,9 +64,9 @@ common = xmlrpc.client.ServerProxy('{}/xmlrpc/2/common'.format(url), context=ssl
 uid    = common.authenticate(db, username, password, {})
 models = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(url), context=ssl_context)
 
-OK, KO, WARN = 'ok', 'ko', 'warn'
-ROND     = {OK: '🟢', KO: '🔴', WARN: '🟠'}
-ICONE_MD = {OK: '✅', KO: '❌', WARN: '⚠️'}
+# INFO (jaune) : protégé, mais pas comme recommandé (ex. gestionnaire de bases désactivé par Odoo, page affichée)
+OK, KO, WARN, INFO = 'ok', 'ko', 'warn', 'info'
+ROND     = {OK: '🟢', KO: '🔴', WARN: '🟠', INFO: '🟡'}
 
 # Programme envoyé par SSH (bash -s), lecture seule.
 # Sortie : « INSTALL;dossier;version;date;sqli;xss_stabilize;xss_refine;libxml2 » par installation,
@@ -166,13 +168,31 @@ def fetch_https(base, path):
         return None, str(e)
 
 
+def post_json(base, path):
+    """POST JSON-RPC vide ; retourne (content, http_code) ou (None, erreur)."""
+    req = urllib.request.Request('%s%s' % (base, path), data=b'{"jsonrpc":"2.0","method":"call","params":{}}',
+                                 headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
+            return resp.read().decode('utf-8', errors='replace'), resp.getcode()
+    except urllib.error.HTTPError as e:
+        return e.read().decode('utf-8', errors='replace'), e.code
+    except Exception as e:
+        return None, str(e)
+
+
 def get_db_manager_statut(nom):
-    """Gestionnaire de bases Odoo bloqué ou non."""
+    """Gestionnaire de bases : fermé par nginx (403/404), page affichée mais opérations bloquées
+    par Odoo (list_db = False), ou ouvert."""
     content, http_code = fetch_https(nom, '/web/database/manager')
     if content is None:
         return WARN, 'ERREUR'
-    if 'disabled by the administrator' in content or 'has been disabled' in content or http_code in (403, 404):
+    if http_code in (403, 404):
         return OK, 'BLOQUÉ'
+    liste, _code = post_json(nom, '/web/database/list')
+    if 'disabled by the administrator' in content or 'has been disabled' in content \
+            or (liste and ('blocked' in liste or 'AccessDenied' in liste)):
+        return INFO, 'affiché'
     content_low = content.lower()
     if 'master password' in content_low and ('create database' in content_low or 'database_manager' in content_low):
         return KO, 'OUVERT !'
@@ -216,6 +236,41 @@ def get_ports_statut(nom):
             pass
     if ouverts:
         return KO, 'OUVERTS %s' % ','.join(ouverts)
+    return OK, 'FERMÉS'
+
+
+def odoo_par_ip(nom):
+    """Odoo répond-il par l'adresse IP du serveur (pas de bloc default_server dans nginx) ?"""
+    try:
+        ip = socket.getaddrinfo(nom, 443, socket.AF_INET)[0][4][0]
+    except OSError:
+        return False
+    if ip == nom:
+        # accès SSH par IP : rien à comparer
+        return False
+    for base in ('https://%s' % ip, 'http://%s' % ip):
+        content, http_code = fetch_https(base, '/web/login')
+        if content and http_code == 200 and ('oe_login_form' in content or 'odoo' in content.lower()):
+            return True
+    return False
+
+
+def get_acces_statut(nom, base, ports):
+    """Accès directs : ports 8069/8072 (🔴), Odoo par l'adresse IP, XML-RPC ouvert (🟠)."""
+    pbs, etat = [], OK
+    if ports[0] == KO:
+        pbs.append(ports[1].replace('OUVERTS ', ''))
+        etat = KO
+    if base and base.startswith('https://'):
+        if odoo_par_ip(nom):
+            pbs.append('IP')
+            etat = etat if etat == KO else WARN
+        content, http_code = fetch_https(base, '/xmlrpc/2/common')
+        if content is not None and http_code not in (403, 404):
+            pbs.append('xmlrpc')
+            etat = etat if etat == KO else WARN
+    if pbs:
+        return etat, 'OUVERT %s' % ', '.join(pbs)
     return OK, 'FERMÉS'
 
 
@@ -338,7 +393,7 @@ def traiter(serveur):
         }
     else:
         http = {k: (OK, 'pas de web') for k in ('bdd', 'reset', 'signup')}
-    http['ports'] = ports
+    http['ports'] = get_acces_statut(domaine, base, ports)
     entete = {'client': client, 'serveur': nom, 'service': service_name, 'releve': MAINTENANT, 'echec': False}
     if not acces_ssh:
         installs, logs, erreur = [], None, 'SSH non configuré'
@@ -370,7 +425,7 @@ COLONNES = [
     ('bdd',     'Gestion BDD',   15, 'Gestion des bases'),
     ('reset',   'Reset pwd',     15, 'Réinit. mot de passe'),
     ('signup',  'Inscription',   15, 'Inscription'),
-    ('ports',   'Ports',         20, 'Ports 8069, 8072'),
+    ('ports',   'Accès direct',  26, 'Accès direct'),
     ('sqli',    'SQLi',          16, 'SQLi (130028)'),
     ('xss',     'XSS',           22, 'XSS (130029)'),
     ('logs',    'Journaux',      22, 'Journaux'),
@@ -394,10 +449,9 @@ def cellule_terminal(val, lg):
 
 
 def cellule_md(val):
+    # même affichage que dans le terminal
     if isinstance(val, tuple):
-        if val[0] == OK and val[1] in ('BLOQUÉ', 'FERMÉS', 'rien'):
-            return ICONE_MD[OK]
-        return '%s %s' % (ICONE_MD[val[0]], val[1].replace('|', '/'))
+        return '%s %s' % (ROND[val[0]], val[1].replace('|', '/'))
     return str(val or '').replace('|', '/')
 
 
@@ -418,7 +472,7 @@ def lignes_existantes(chemin, serveurs_releves):
         if len(cellules) < 2 or cellules[1] in serveurs_releves:
             continue
         if len(cellules) == len(COLONNES) - 1:  # ancien format, sans la colonne Rotation (avant Relevé)
-            cellules.insert(len(cellules) - 1, ICONE_MD[WARN] + ' ?')
+            cellules.insert(len(cellules) - 1, ROND[WARN] + ' ?')
         if len(cellules) == len(COLONNES):
             garder.append(cellules)
     return garder
@@ -479,18 +533,22 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         '',
         '| Colonne | Lecture |',
         '|---|---|',
-        '| Sources | Date du dernier commit git (sinon de `release.py`) ; ⚠️ plus de 6 mois, ❌ plus de 2 ans |',
-        '| Gestion des bases, réinit. mot de passe, inscription, ports | Testés depuis le poste ; ✅ = bloqué ou fermé ; '
+        '| Sources | Date du dernier commit git (sinon de `release.py`) ; 🟠 plus de 6 mois, 🔴 plus de 2 ans |',
+        '| Gestion des bases, réinit. mot de passe, inscription, accès direct | Testés depuis le poste ; 🟢 = bloqué ou fermé ; '
         '« pas de web » = ni HTTPS ni port 8069 ne répondent |',
+        '| Gestion des bases | 🟢 BLOQUÉ = 403 ou 404 (fermé dans nginx) ; 🟡 affiché = opérations bloquées par Odoo '
+        '(`list_db = False`), mais page encore affichée (pas fermée dans nginx) ; 🔴 OUVERT = gestionnaire utilisable |',
+        '| Accès direct | 🔴 8069, 8072 = ports d\'Odoo joignables ; 🟠 IP = Odoo répond par l\'adresse IP (pas de bloc '
+        '`default_server` dans nginx) ; 🟠 xmlrpc = `/xmlrpc` pas fermé dans nginx ([config nginx](../../linux/nginx.md#configuration-nginx)) |',
         '| SQLi | Patch de l\'avis dans `odoo/models.py` ; 17.0 et plus non concernés ; 12.0 et moins sans patch |',
         '| XSS | 16.0 et plus : correctif dans `odoo/tools/mail.py` (« stabilize » et « refine HTML normalization ») ; '
         '« partiel » = 16.0 à jour, second commit seulement dans la PR [OCA/OCB 1378](https://github.com/OCA/OCB/pull/1378). '
-        'Avant 16.0 : version de libxml2 chargée par le Python d\'Odoo (⚠️ ≥ 2.10 = atténué, ❌ plus ancienne ou inconnue) |',
+        'Avant 16.0 : version de libxml2 chargée par le Python d\'Odoo (🟠 ≥ 2.10 = atténué, 🔴 plus ancienne ou inconnue) |',
         '| Journaux | Lignes du journal Odoo avec les motifs de l\'avis ; « forts » (`pg_sleep(3)`, `as z --`) = tentative '
         'quasi certaine ; « faibles » = erreur `InvalidTextRepresentation` dont la valeur refusée contient du SQL '
         '(`select`, `union`, `sleep`, `cast`, `--`), à regarder ; erreurs ordinaires non comptées |',
         '| Rotation des journaux | « logrotate » = fichier de `/etc/logrotate.d/` qui cite odoo ; « option Odoo » = '
-        '`logrotate = True` dans la configuration d\'Odoo ; ❌ aucune = taille du plus gros journal non compressé |',
+        '`logrotate = True` dans la configuration d\'Odoo ; 🔴 aucune = taille du plus gros journal non compressé |',
     ]
     if manuelle:
         md += ['', manuelle]
