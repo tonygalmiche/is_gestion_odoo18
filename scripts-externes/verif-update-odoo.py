@@ -21,6 +21,9 @@ Par SSH (une connexion par serveur, commandes en lecture seule), pour chaque ins
     bases du PostgreSQL local (psql en postgres : runuser si root, sinon sudo sans mot de passe),
     30 s au plus par base, 60 s en tout.
   Journaux et messages piégés : même colonne « Traces ».
+  - pare-feu ufw (ufw status verbose, root ou sudo sans mot de passe) : actif, entrées refusées par défaut et
+    aucun port web (80, 443, 8069, 8072) ouvert à tous → 🔴 et 🟠 des colonnes testées depuis le poste, SQLi et
+    XSS passent en 🟡 « (pare-feu) » (le poste est une adresse autorisée : il voit Odoo ouvert).
 
 Usage :
     python3 verif-update-odoo.py                      # tableau dans le terminal
@@ -75,7 +78,7 @@ ROND     = {OK: '🟢', KO: '🔴', WARN: '🟠', INFO: '🟡'}
 
 # Programme envoyé par SSH (bash -s), lecture seule.
 # Sortie : « INSTALL;dossier;version;date;sqli;xss_stabilize;xss_refine;libxml2 » par installation,
-#          puis « ROT;rotation;Mo;nb_fichiers », « MSG;messages;bases_en_erreur;raison », « LOGS;forts;faibles;nb_fichiers »
+#          puis « ROT;rotation;Mo;nb_fichiers », « UFW;ligne de ufw status verbose » (une par ligne), « MSG;messages;bases_en_erreur;raison », « LOGS;forts;faibles;nb_fichiers »
 #          (journaux en dernier : délai dépassé → sortie partielle gardée).
 PROGRAMME = r'''
 for D in /opt/odoo*/; do
@@ -129,6 +132,12 @@ for F in $FICHIERS; do
     esac
 done
 echo "ROT;$ROT;$MO;$NB"
+# Pare-feu ufw : état et règles (root, sinon sudo sans mot de passe, sinon rien)
+U=/usr/sbin/ufw
+if [ -x "$U" ]; then
+    if [ "$(id -u)" = 0 ]; then "$U" status verbose 2>/dev/null
+    else sudo -n "$U" status verbose 2>/dev/null; fi | sed 's/^/UFW;/'
+fi
 # Messages piégés en base (CVE-2026-130029) : requête d'Akretion sur mail_message, toutes les bases
 # du PostgreSQL local ; base sans mail_message (pas Odoo) ignorée ; 30 s au plus par base, 60 s en tout.
 # psql en postgres : runuser si root, sinon sudo sans mot de passe, sinon avec l'utilisateur SSH.
@@ -338,7 +347,7 @@ def releve_ssh(acces_ssh):
 
 
 def lire_releve(sortie):
-    """Lignes INSTALL, ROT, MSG et LOGS du programme ; logs = None si aucune ligne ROT, MSG ou LOGS."""
+    """Lignes INSTALL, ROT, UFW, MSG et LOGS du programme ; logs = None si aucune ligne ROT, UFW, MSG ou LOGS."""
     installs, logs = [], {}
     for ligne in sortie.splitlines():
         champs = ligne.strip().split(';')
@@ -348,6 +357,8 @@ def lire_releve(sortie):
                              'libxml2': champs[7]})
         elif champs[0] == 'ROT' and len(champs) == 4:
             logs.update(rotation=champs[1], mo=int(champs[2] or 0), fichiers=int(champs[3] or 0))
+        elif champs[0] == 'UFW' and len(champs) > 1:
+            logs.setdefault('ufw', []).append(ligne.strip().split(';', 1)[1].strip())
         elif champs[0] == 'MSG' and len(champs) == 4:
             logs.update(msg=int(champs[1]) if champs[1] else None, msg_err=int(champs[2] or 0), msg_raison=champs[3])
         elif champs[0] == 'LOGS' and len(champs) == 4:
@@ -445,6 +456,35 @@ def statut_logs(logs):
     return etat, ', '.join(textes)
 
 
+PORTS_WEB = {80, 443, 8069, 8072}
+
+
+def pare_feu(logs):
+    """ufw filtrant : actif, entrées refusées par défaut, et aucune règle ouverte à tous (« Anywhere ») sur un port
+    web, sur tous les ports, une plage ou un profil d'application (en cas de doute : non filtrant)."""
+    lignes = (logs or {}).get('ufw') or []
+    if 'Status: active' not in lignes:
+        return False
+    if not any(l.startswith('Default:') and re.search(r'(deny|reject) \(incoming\)', l) for l in lignes):
+        return False
+    for l in lignes:
+        champs = re.split(r'\s{2,}', l)  # « À  Action  De »
+        if len(champs) != 3 or not champs[1].startswith(('ALLOW', 'LIMIT')) or not champs[2].startswith('Anywhere'):
+            continue
+        m = re.fullmatch(r'([\d,]+)(/(tcp|udp))?( \(v6\))?', champs[0])
+        if not m or PORTS_WEB & {int(p) for p in m.group(1).split(',') if p}:
+            return False
+    return True
+
+
+def attenue(statut):
+    """Pare-feu filtrant : 🔴 et 🟠 passent en 🟡, avec « (pare-feu) »."""
+    etat, texte = statut
+    if etat in (KO, WARN):
+        return INFO, '%s (pare-feu)' % texte
+    return statut
+
+
 def traiter(serveur):
     """Retourne la liste des lignes (une par installation Odoo) du serveur."""
     client       = serveur['partner_id'] and serveur['partner_id'][1] or ''
@@ -474,13 +514,19 @@ def traiter(serveur):
         entete['echec'] = bool(erreur and (erreur.startswith('ERREUR SSH') or erreur.startswith('délai')))
         return [dict(entete, **http, version=service_name, date=msg, sqli=msg, xss=msg,
                      logs=statut_logs(logs), rotation=statut_rotation(logs))]
+    filtrant = pare_feu(logs)
+    if filtrant:
+        http = {k: attenue(v) for k, v in http.items()}
     lignes = []
     for inst in installs:
         v = inst['version']
         if len(installs) > 1:
             v += ' (%s)' % inst['dossier'].rstrip('/').split('/')[-1]
+        sqli, xss = statut_sqli(inst), statut_xss(inst)
+        if filtrant:
+            sqli, xss = attenue(sqli), attenue(xss)
         lignes.append(dict(entete, **http, version=v, date=statut_date(inst['date']),
-                           sqli=statut_sqli(inst), xss=statut_xss(inst), logs=statut_logs(logs),
+                           sqli=sqli, xss=xss, logs=statut_logs(logs),
                            rotation=statut_rotation(logs)))
     return lignes
 
@@ -491,12 +537,12 @@ COLONNES = [
     ('serveur', 'Serveur',       34, 'Serveur'),
     ('version', 'Version',       16, 'Version'),
     ('date',    'Sources',       14, 'Sources'),
-    ('bdd',     'Gestion BDD',   15, 'Gestion des bases'),
-    ('reset',   'Reset pwd',     15, 'Réinit. mot de passe'),
-    ('signup',  'Inscription',   15, 'Inscription'),
-    ('ports',   'Accès direct',  26, 'Accès direct'),
-    ('sqli',    'SQLi',          16, 'SQLi (130028)'),
-    ('xss',     'XSS',           22, 'XSS (130029)'),
+    ('bdd',     'Gestion BDD',   23, 'Gestion des bases'),
+    ('reset',   'Reset pwd',     20, 'Réinit. mot de passe'),
+    ('signup',  'Inscription',   20, 'Inscription'),
+    ('ports',   'Accès direct',  30, 'Accès direct'),
+    ('sqli',    'SQLi',          27, 'SQLi (130028)'),
+    ('xss',     'XSS',           29, 'XSS (130029)'),
     ('logs',    'Traces',        28, 'Traces'),
     ('rotation', 'Rotation',     20, 'Rotation des journaux'),
     ('releve',  'Relevé',        16, 'Relevé'),
@@ -609,6 +655,9 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         '(`list_db = False`), mais page encore affichée (pas fermée dans nginx) ; 🔴 OUVERT = gestionnaire utilisable |',
         '| Accès direct | 🔴 8069, 8072 = ports d\'Odoo joignables ; 🟠 IP = Odoo répond par l\'adresse IP (pas de bloc '
         '`default_server` dans nginx) ; 🟠 xmlrpc = `/xmlrpc` pas fermé dans nginx ([config nginx](../../linux/nginx.md#configuration-nginx)) |',
+        '| « (pare-feu) » | 🟡 = 🔴 ou 🟠 atténué par ufw (actif, entrées refusées par défaut, aucun port web 80, 443, '
+        '8069, 8072 ouvert à tous) ; le poste est une adresse autorisée, d\'où « OUVERT » ; failles encore atteignables '
+        'depuis les adresses autorisées ; pare-feu autre qu\'ufw (iptables, OVH) non détecté |',
         '| SQLi | Patch de l\'avis dans `odoo/models.py` ; 17.0 et plus non concernés ; 12.0 et moins sans patch |',
         '| XSS | 16.0 et plus : correctif dans `odoo/tools/mail.py` (« stabilize » et « refine HTML normalization ») ; '
         '« partiel » = 16.0 à jour, second commit seulement dans la PR [OCA/OCB 1378](https://github.com/OCA/OCB/pull/1378). '
