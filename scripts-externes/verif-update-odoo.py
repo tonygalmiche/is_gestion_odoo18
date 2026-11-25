@@ -11,8 +11,8 @@ Par SSH (une connexion par serveur, commandes en lecture seule), pour chaque ins
   - version et date des sources (dernier commit git, sinon date de release.py) ;
   - CVE-2026-130028 (injection SQL, ≤ 16) : patch de l'avis présent dans odoo/models.py ;
   - CVE-2026-130029 (XSS) : correctif présent dans odoo/tools/mail.py (16.0 et plus, 2 commits :
-    « stabilize » et « refine HTML normalization », le second absent d'Odoo 16.0, PR OCA/OCB 1378),
-    sinon version de libxml2 chargée par le Python d'Odoo (≥ 2.10 : atténué) ;
+    « stabilize » et « refine HTML normalization », le second absent d'Odoo 16.0, PR OCA/OCB 1378 ;
+    12.0 à 15.0 : report OCA/OCB, PR 1373 à 1376), sinon version de libxml2 chargée par le Python d'Odoo (≥ 2.10 : atténué) ;
   - journaux Odoo : lignes avec les motifs d'attaque de l'avis (forts : pg_sleep, « as z -- » ;
     faibles : InvalidTextRepresentation, aussi produits par des erreurs ordinaires) ; 500 derniers Mo
     des fichiers non compressés et 500 premiers Mo des fichiers compressés des 31 derniers jours, à basse
@@ -90,8 +90,9 @@ for D in /opt/odoo*/; do
         P=$(git -c safe.directory='*' -C "$S" log -1 --format=%cs 2>/dev/null)
         [ -n "$P" ] || P=$(date -r "$F" +%F)
         SQ=0; grep -q "def parse_read_group_spec" "${S}odoo/models.py" 2>/dev/null && SQ=1
-        X2=0; grep -qF "serialized.replace(b'--!>'" "${S}odoo/tools/mail.py" 2>/dev/null && X2=1
-        X3=0; grep -qF '</?o:[^<>\n]*?>' "${S}odoo/tools/mail.py" 2>/dev/null && X3=1
+        # XSS : correctif d'Odoo (16.0 et plus) ou report OCA/OCB (12.0 à 15.0, PR 1373 à 1376)
+        X2=0; grep -qE "replace\(b?'--!>'" "${S}odoo/tools/mail.py" 2>/dev/null && X2=1
+        X3=0; grep -qF -e '</?o:[^<>\n]*?>' -e 'remove charset declarations from meta tags' "${S}odoo/tools/mail.py" 2>/dev/null && X3=1
         LX=""
         for PID in $(pgrep -f "odoo-bin|openerp-server|odoo.py" 2>/dev/null); do
             C=$(tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null)
@@ -661,7 +662,9 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         '| SQLi | Patch de l\'avis dans `odoo/models.py` ; 17.0 et plus non concernés ; 12.0 et moins sans patch |',
         '| XSS | 16.0 et plus : correctif dans `odoo/tools/mail.py` (« stabilize » et « refine HTML normalization ») ; '
         '« partiel » = 16.0 à jour, second commit seulement dans la PR [OCA/OCB 1378](https://github.com/OCA/OCB/pull/1378). '
-        'Avant 16.0 : version de libxml2 chargée par le Python d\'Odoo (🟠 ≥ 2.10 = atténué, 🔴 plus ancienne ou inconnue) |',
+        '12.0 à 15.0 : 🟢 corrigé = report OCA/OCB ([1373](https://github.com/OCA/OCB/pull/1373) à '
+        '[1376](https://github.com/OCA/OCB/pull/1376)) dans `odoo/tools/mail.py`. '
+        'Sinon : version de libxml2 chargée par le Python d\'Odoo (🟠 ≥ 2.10 = atténué, 🔴 plus ancienne ou inconnue) |',
         '| Traces | Journaux : lignes du journal Odoo avec les motifs de l\'avis ; « forts » (`pg_sleep(3)`, `as z --`) = '
         'tentative quasi certaine ; « faibles » = erreur `InvalidTextRepresentation` dont la valeur refusée contient du SQL '
         '(`select`, `union`, `sleep`, `cast`, `--`), à regarder ; erreurs ordinaires non comptées. '
@@ -673,6 +676,29 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         'la lecture des journaux (le reste de la ligne est relevé) |',
         '| Rotation des journaux | « logrotate » = fichier de `/etc/logrotate.d/` qui cite odoo ; « option Odoo » = '
         '`logrotate = True` dans la configuration d\'Odoo ; 🔴 aucune = taille du plus gros journal non compressé |',
+        '',
+        '## Corriger',
+        '',
+        'Exemples complets : [Odoo 13 avec nginx](../../epicerie-locavore-des-bourroches/odoo13-locavore.md) '
+        '(Debian 10, tout en 🟢 sauf Sources), [Odoo 10 sans nginx](../../epicerie-locavore-des-bourroches/vps571502.md) '
+        '(pare-feu ufw).',
+        '',
+        '| Colonne | Procédure |',
+        '|---|---|',
+        '| Sources | Ancienne Debian sans mises à jour : dépôts `archive.debian.org` et ELTS Freexian '
+        '([exemple Debian 10](../../epicerie-locavore-des-bourroches/odoo13-locavore.md#mise-à-jour-du-25112026)) ; '
+        'sources d\'Odoo : migration |',
+        '| Gestion des bases | [Désactiver la gestion des bases](desactiver-gestion-des-bases.md) (`list_db = False`) et '
+        '`/web/database` en 403 dans nginx ([config nginx](../../linux/nginx.md#configuration-nginx)) |',
+        '| Réinit. mot de passe, inscription | [Page de connexion](page-de-connexion.md), '
+        '[création de comptes](interdire-creation-comptes.md) ; Odoo 20 : module `is_interface_epuree` ([Sécuriser Odoo](README.md)) |',
+        '| Accès direct | [Ports d\'Odoo](bloquer-ports-odoo.md) (`http_interface = 127.0.0.1`), '
+        '[XML-RPC](bloquer-xmlrpc.md), bloc `default_server` ([config nginx](../../linux/nginx.md#configuration-nginx)) ; '
+        'Odoo sans nginx : [pare-feu ufw](../../epicerie-locavore-des-bourroches/vps571502.md#pare-feu--accès-réservé-à-la-boutique-et-à-infosaône) |',
+        '| SQLi, XSS | 16.0 à 20.0 : `git pull` ; 13.0 à 15.0 (12.0 pour XSS) : '
+        '[Appliquer les correctifs](../../cve/Odoo-2026-11-23.md#appliquer-les-correctifs-130-à-150) ; '
+        '10.0, 12.0 (SQLi) : pare-feu ou migration |',
+        '| Rotation des journaux | [logrotate](../../linux/logrotate.md) |',
     ]
     if manuelle:
         md += ['', manuelle]
