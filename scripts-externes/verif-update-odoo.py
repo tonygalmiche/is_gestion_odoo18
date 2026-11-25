@@ -15,7 +15,12 @@ Par SSH (une connexion par serveur, commandes en lecture seule), pour chaque ins
     sinon version de libxml2 chargée par le Python d'Odoo (≥ 2.10 : atténué) ;
   - journaux Odoo : lignes avec les motifs d'attaque de l'avis (forts : pg_sleep, « as z -- » ;
     faibles : InvalidTextRepresentation, aussi produits par des erreurs ordinaires) ; 500 derniers Mo
-    des fichiers non compressés et fichiers compressés des 31 derniers jours, à basse priorité.
+    des fichiers non compressés et 500 premiers Mo des fichiers compressés des 31 derniers jours, à basse
+    priorité, en dernier (délai dépassé : le reste du relevé est gardé) ;
+  - messages piégés en base (CVE-2026-130029) : requête d'Akretion sur mail_message, dans toutes les
+    bases du PostgreSQL local (psql en postgres : runuser si root, sinon sudo sans mot de passe),
+    30 s au plus par base, 60 s en tout.
+  Journaux et messages piégés : même colonne « Traces ».
 
 Usage :
     python3 verif-update-odoo.py                      # tableau dans le terminal
@@ -70,7 +75,8 @@ ROND     = {OK: '🟢', KO: '🔴', WARN: '🟠', INFO: '🟡'}
 
 # Programme envoyé par SSH (bash -s), lecture seule.
 # Sortie : « INSTALL;dossier;version;date;sqli;xss_stabilize;xss_refine;libxml2 » par installation,
-#          puis « LOGS;forts;faibles;nb_fichiers ».
+#          puis « ROT;rotation;Mo;nb_fichiers », « MSG;messages;bases_en_erreur;raison », « LOGS;forts;faibles;nb_fichiers »
+#          (journaux en dernier : délai dépassé → sortie partielle gardée).
 PROGRAMME = r'''
 for D in /opt/odoo*/; do
     for S in "${D}" "${D}odoo/"; do
@@ -107,26 +113,8 @@ FICHIERS=""
 for F in $L; do FICHIERS="$FICHIERS $(ls "$F"* 2>/dev/null)"; done
 FICHIERS="$FICHIERS $(ls /var/log/odoo*/*.log* /var/log/odoo*.log* 2>/dev/null)"
 FICHIERS=$(echo $FICHIERS | tr ' ' '\n' | sort -u)
-FORT=0; FAIBLE=0; NB=0
-if [ -n "$FICHIERS" ]; then
-    NB=$(echo "$FICHIERS" | wc -l)
-    # Une seule lecture des journaux, à basse priorité (serveurs de production) : 500 derniers Mo des fichiers
-    # non compressés (journaux sans rotation de plusieurs Go), fichiers compressés des 31 derniers jours
-    BAS="nice -n 19"
-    command -v ionice >/dev/null && BAS="$BAS ionice -c3"
-    TROUVE=$(for F in $FICHIERS; do
-                 case "$F" in
-                     *.gz) [ -n "$(find "$F" -mtime -31 2>/dev/null)" ] && zcat "$F" 2>/dev/null ;;
-                     *)    tail -c 500000000 "$F" 2>/dev/null ;;
-                 esac
-             done | $BAS env LC_ALL=C grep -aE "pg_sleep\(3\)|as z --|InvalidTextRepresentation|invalid input syntax for type integer")
-    FORT=$(printf '%s\n' "$TROUVE" | grep -cE "pg_sleep\(3\)|as z --")
-    # Erreur « texte à la place d'un nombre » comptée seulement si la valeur refusée contient du SQL
-    # (erreurs ordinaires ignorées : NewId_…, datapoint_…, mot saisi, formule n8n non remplacée)
-    FAIBLE=$(printf '%s\n' "$TROUVE" | grep -E "InvalidTextRepresentation|invalid input syntax for type integer" \
-             | grep -ciE "select|union|sleep|cast|--")
-fi
-echo "LOGS;$FORT;$FAIBLE;$NB"
+NB=0
+[ -n "$FICHIERS" ] && NB=$(echo "$FICHIERS" | wc -l)
 # Rotation des journaux : fichier de /etc/logrotate.d/ qui cite odoo, ou option logrotate d'Odoo ;
 # taille du plus gros journal non compressé, en Mo
 ROT=""
@@ -140,7 +128,62 @@ for F in $FICHIERS; do
         *) T=$(( $(stat -c %s "$F" 2>/dev/null || echo 0) / 1048576 )); [ "$T" -gt "$MO" ] && MO=$T ;;
     esac
 done
-echo "ROT;$ROT;$MO"
+echo "ROT;$ROT;$MO;$NB"
+# Messages piégés en base (CVE-2026-130029) : requête d'Akretion sur mail_message, toutes les bases
+# du PostgreSQL local ; base sans mail_message (pas Odoo) ignorée ; 30 s au plus par base, 60 s en tout.
+# psql en postgres : runuser si root, sinon sudo sans mot de passe, sinon avec l'utilisateur SSH.
+PSQL=""
+if command -v psql >/dev/null; then
+    if [ "$(id -u)" = 0 ] && id postgres >/dev/null 2>&1; then PSQL="runuser -u postgres -- psql"
+    elif sudo -n -u postgres true 2>/dev/null; then PSQL="sudo -n -u postgres psql"
+    else PSQL="psql"; fi
+fi
+MSG=""; ERR=0; RAISON=""
+if ! pgrep -x postgres >/dev/null && ! pgrep -x postmaster >/dev/null; then
+    RAISON="arrete"
+elif [ -n "$PSQL" ]; then
+    BASES=$(cd /tmp && $PSQL -XAtq -d postgres -c "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate AND datname <> 'postgres'" 2>/dev/null)
+    if [ -n "$BASES" ]; then
+        MSG=0; DEBUT=$SECONDS
+        for B in $BASES; do
+            if [ $((SECONDS - DEBUT)) -ge 60 ]; then ERR=$((ERR + 1)); continue; fi
+            N=$(cd /tmp && PGOPTIONS="-c statement_timeout=30000" nice -n 19 $PSQL -XAtq -d "$B" 2>/dev/null <<'SQL'
+SELECT CASE WHEN to_regclass('mail_message') IS NULL THEN -1 ELSE (
+    SELECT count(*) FROM mail_message
+    WHERE body ~* $$<script|javascript:|vbscript:|data:text/html|srcdoc|--!>|<!--->?|<[^>]*[\s/]on[a-z]+\s*=|<(iframe|object|embed|svg|math|base|form|template)\M$$
+) END;
+SQL
+)
+            case "$N" in
+                -1) ;;
+                ''|*[!0-9]*) ERR=$((ERR + 1)) ;;
+                *) MSG=$((MSG + N)) ;;
+            esac
+        done
+    fi
+fi
+echo "MSG;$MSG;$ERR;$RAISON"
+# Journaux en dernier (étape la plus longue : en cas de délai dépassé, le reste est déjà relevé).
+# Une seule lecture, à basse priorité (serveurs de production) : 500 derniers Mo des fichiers non compressés
+# (journaux sans rotation de plusieurs Go), 500 premiers Mo des fichiers compressés des 31 derniers jours
+# (1re rotation d'un journal de plusieurs Go)
+FORT=0; FAIBLE=0
+if [ -n "$FICHIERS" ]; then
+    BAS="nice -n 19"
+    command -v ionice >/dev/null && BAS="$BAS ionice -c3"
+    TROUVE=$(for F in $FICHIERS; do
+                 case "$F" in
+                     *.gz) [ -n "$(find "$F" -mtime -31 2>/dev/null)" ] && zcat "$F" 2>/dev/null | head -c 500000000 ;;
+                     *)    tail -c 500000000 "$F" 2>/dev/null ;;
+                 esac
+             done | $BAS env LC_ALL=C grep -aE "pg_sleep\(3\)|as z --|InvalidTextRepresentation|invalid input syntax for type integer")
+    FORT=$(printf '%s\n' "$TROUVE" | grep -cE "pg_sleep\(3\)|as z --")
+    # Erreur « texte à la place d'un nombre » comptée seulement si la valeur refusée contient du SQL
+    # (erreurs ordinaires ignorées : NewId_…, datapoint_…, mot saisi, formule n8n non remplacée)
+    FAIBLE=$(printf '%s\n' "$TROUVE" | grep -E "InvalidTextRepresentation|invalid input syntax for type integer" \
+             | grep -ciE "select|union|sleep|cast|--")
+fi
+echo "LOGS;$FORT;$FAIBLE;$NB"
 '''
 
 
@@ -275,29 +318,41 @@ def get_acces_statut(nom, base, ports):
 
 
 def releve_ssh(acces_ssh):
-    """Retourne (installations, journaux, erreur)."""
+    """Retourne (installations, journaux, erreur). Délai dépassé : ce qui a déjà été relevé est gardé
+    (journaux lus en dernier), l'erreur n'est renvoyée que si aucune installation n'a été relevée."""
     try:
         res = subprocess.run(['ssh', '-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', acces_ssh, 'bash -s'],
                              input=PROGRAMME, capture_output=True, text=True, timeout=args.delai)
-    except subprocess.TimeoutExpired:
-        return [], None, 'délai dépassé (%d s)' % args.delai
+    except subprocess.TimeoutExpired as e:
+        sortie = e.stdout or ''
+        if isinstance(sortie, bytes):
+            sortie = sortie.decode('utf-8', errors='replace')
+        installs, logs = lire_releve(sortie)
+        return installs, logs, 'délai dépassé (%d s)' % args.delai
     if res.returncode == 255:
         detail = res.stderr.strip().splitlines()[-1] if res.stderr.strip() else ''
         print('ERREUR SSH %s : %s' % (acces_ssh, detail), file=sys.stderr, flush=True)
         return [], None, 'ERREUR SSH'
-    installs, logs = [], None
-    for ligne in res.stdout.splitlines():
+    installs, logs = lire_releve(res.stdout)
+    return installs, logs, None
+
+
+def lire_releve(sortie):
+    """Lignes INSTALL, ROT, MSG et LOGS du programme ; logs = None si aucune ligne ROT, MSG ou LOGS."""
+    installs, logs = [], {}
+    for ligne in sortie.splitlines():
         champs = ligne.strip().split(';')
         if champs[0] == 'INSTALL' and len(champs) == 8:
             installs.append({'dossier': champs[1], 'version': champs[2], 'date': champs[3],
                              'sqli': champs[4] == '1', 'xss2': champs[5] == '1', 'xss3': champs[6] == '1',
                              'libxml2': champs[7]})
+        elif champs[0] == 'ROT' and len(champs) == 4:
+            logs.update(rotation=champs[1], mo=int(champs[2] or 0), fichiers=int(champs[3] or 0))
+        elif champs[0] == 'MSG' and len(champs) == 4:
+            logs.update(msg=int(champs[1]) if champs[1] else None, msg_err=int(champs[2] or 0), msg_raison=champs[3])
         elif champs[0] == 'LOGS' and len(champs) == 4:
-            logs = {'fort': int(champs[1] or 0), 'faible': int(champs[2] or 0), 'fichiers': int(champs[3] or 0)}
-        elif champs[0] == 'ROT' and len(champs) == 3 and logs is not None:
-            logs['rotation'] = champs[1]
-            logs['mo'] = int(champs[2] or 0)
-    return installs, logs, None
+            logs.update(fort=int(champs[1] or 0), faible=int(champs[2] or 0), fichiers=int(champs[3] or 0))
+    return installs, logs or None
 
 
 def majeure(v):
@@ -365,15 +420,29 @@ def statut_rotation(logs):
 
 
 def statut_logs(logs):
+    """Colonne Traces : motifs dans les journaux et messages piégés en base ; couleur la plus grave."""
     if logs is None:
         return WARN, '?'
-    if not logs['fichiers']:
-        return WARN, 'aucun journal'
-    if logs['fort']:
-        return KO, '%d forts, %d faibles' % (logs['fort'], logs['faible'])
-    if logs['faible']:
-        return WARN, '%d faibles' % logs['faible']
-    return OK, 'rien'
+    etats, textes = [], []
+    if 'fichiers' in logs and not logs['fichiers']:
+        etats.append(WARN); textes.append('aucun journal')
+    elif 'fort' not in logs:
+        etats.append(WARN); textes.append('journaux ?')
+    elif logs['fort']:
+        etats.append(KO); textes.append('%d forts, %d faibles' % (logs['fort'], logs['faible']))
+    elif logs['faible']:
+        etats.append(WARN); textes.append('%d faibles' % logs['faible'])
+    msg = logs.get('msg')
+    if logs.get('msg_raison') == 'arrete':
+        etats.append(INFO); textes.append('PG arrêté')
+    elif msg:
+        etats.append(WARN); textes.append('%d msg' % msg)
+    elif msg is None or logs.get('msg_err'):
+        etats.append(WARN); textes.append('msg ?')
+    if not textes:
+        return OK, 'rien'
+    etat = next(e for e in (KO, WARN, INFO) if e in etats)
+    return etat, ', '.join(textes)
 
 
 def traiter(serveur):
@@ -428,7 +497,7 @@ COLONNES = [
     ('ports',   'Accès direct',  26, 'Accès direct'),
     ('sqli',    'SQLi',          16, 'SQLi (130028)'),
     ('xss',     'XSS',           22, 'XSS (130029)'),
-    ('logs',    'Journaux',      22, 'Journaux'),
+    ('logs',    'Traces',        28, 'Traces'),
     ('rotation', 'Rotation',     20, 'Rotation des journaux'),
     ('releve',  'Relevé',        16, 'Relevé'),
 ]
@@ -544,9 +613,15 @@ def ecrire_markdown(chemin, lignes, partiel, noms_serveurs):
         '| XSS | 16.0 et plus : correctif dans `odoo/tools/mail.py` (« stabilize » et « refine HTML normalization ») ; '
         '« partiel » = 16.0 à jour, second commit seulement dans la PR [OCA/OCB 1378](https://github.com/OCA/OCB/pull/1378). '
         'Avant 16.0 : version de libxml2 chargée par le Python d\'Odoo (🟠 ≥ 2.10 = atténué, 🔴 plus ancienne ou inconnue) |',
-        '| Journaux | Lignes du journal Odoo avec les motifs de l\'avis ; « forts » (`pg_sleep(3)`, `as z --`) = tentative '
-        'quasi certaine ; « faibles » = erreur `InvalidTextRepresentation` dont la valeur refusée contient du SQL '
-        '(`select`, `union`, `sleep`, `cast`, `--`), à regarder ; erreurs ordinaires non comptées |',
+        '| Traces | Journaux : lignes du journal Odoo avec les motifs de l\'avis ; « forts » (`pg_sleep(3)`, `as z --`) = '
+        'tentative quasi certaine ; « faibles » = erreur `InvalidTextRepresentation` dont la valeur refusée contient du SQL '
+        '(`select`, `union`, `sleep`, `cast`, `--`), à regarder ; erreurs ordinaires non comptées. '
+        'Base : « N msg » = messages (`mail_message`) avec du HTML piégé (`<script`, `javascript:`, `on…=`, `<iframe`, '
+        'commentaires mal fermés…), toutes bases du serveur, faux positifs possibles (newsletter avec `<form>`, `<svg>`) : '
+        'détail avec la requête de la [CVE Odoo du 23/11/2026](../../cve/Odoo-2026-11-23.md#traces-dattaque) ; '
+        '« msg ? » = base non lue (pas d\'accès à PostgreSQL, plus de 30 s par base ou 60 s en tout) ; '
+        '🟡 PG arrêté = PostgreSQL ne tourne pas (rien à lire) ; « journaux ? » = délai du relevé dépassé pendant '
+        'la lecture des journaux (le reste de la ligne est relevé) |',
         '| Rotation des journaux | « logrotate » = fichier de `/etc/logrotate.d/` qui cite odoo ; « option Odoo » = '
         '`logrotate = True` dans la configuration d\'Odoo ; 🔴 aucune = taille du plus gros journal non compressé |',
     ]
