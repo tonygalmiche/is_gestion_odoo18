@@ -4,6 +4,9 @@ import re
 
 
 class IsSuiviTemps(models.Model):
+    """Tâche du temps passé, importée depuis Google Agenda.
+    Le texte de l'événement donne le client (« PG : »), l'état fait
+    (« FAIT : ») et le temps à facturer (« (4H) »)."""
     _name = 'is.suivi.temps'
     _description = 'Suivi du temps'
     _order = 'date_debut desc'

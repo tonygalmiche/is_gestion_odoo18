@@ -3,6 +3,9 @@ from odoo import api, fields, models  # type: ignore
 
 
 class IsCve(models.Model):
+    """Vulnérabilité de sécurité (CVE) importée depuis vulnx.
+    Scores CVSS et EPSS, exploit connu, correctif disponible,
+    score de gravité calculé, puis analyse et suivi du traitement."""
     _name = 'is.cve'
     _description = "CVE - Vulnérabilité"
     _order = 'score_gravite desc, cve_id desc'

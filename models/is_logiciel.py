@@ -5,6 +5,9 @@ from odoo.exceptions import ValidationError  # type: ignore
 
 
 class IsLogiciel(models.Model):
+    """Logiciel dont on relève la version sur les serveurs, pour
+    savoir lesquels sont touchés par une CVE. Chaque logiciel a son
+    script de relevé, lancé par verif-update-vps.py."""
     _name = 'is.logiciel'
     _description = "Logiciel à surveiller (CVE)"
     _order = 'sequence, name'
@@ -24,6 +27,8 @@ class IsLogiciel(models.Model):
 
 
 class IsServeurLogiciel(models.Model):
+    """Version d'un logiciel installée sur un serveur, avec la date
+    du dernier relevé. Mise à jour par verif-update-vps.py."""
     _name = 'is.serveur.logiciel'
     _description = "Version d'un logiciel sur un serveur"
     _order = 'logiciel_id, serveur_id, version'

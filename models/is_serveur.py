@@ -5,6 +5,9 @@ from odoo import api, fields, models, _  # type: ignore
 from odoo.exceptions import UserError  # type: ignore
 
 class IsServeur(models.Model):
+    """Serveur géré pour un client : hébergeur, adresse IP, accès SSH,
+    système, application hébergée, abonnement et maintenance.
+    Historique des interventions et versions des logiciels installés."""
     _name = 'is.serveur'
     _inherit=['mail.thread']
     _description = "Serveur"
@@ -87,6 +90,8 @@ class IsServeur(models.Model):
 
 
 class IsServeurAction(models.Model):
+    """Intervention faite sur un serveur (mise à jour, correctif,
+    incident…), datée : journal de bord du serveur."""
     _name = 'is.serveur.action'
     _description = "Actions sur les serveurs"
     _order = 'date_heure desc'
@@ -101,6 +106,7 @@ class IsServeurAction(models.Model):
 
 
 class IsSysteme(models.Model):
+    """Système d'exploitation d'un serveur (ex. Debian 12)."""
     _name = 'is.systeme'
     _description = "Système"
     _order = 'name'
@@ -109,6 +115,7 @@ class IsSysteme(models.Model):
 
 
 class IsTypeVPS(models.Model):
+    """Offre de VPS souscrite chez l'hébergeur."""
     _name = 'is.type.vps'
     _description = "Type de VPS"
     _order = 'name'
@@ -117,6 +124,8 @@ class IsTypeVPS(models.Model):
 
 
 class IsService(models.Model):
+    """Application hébergée sur un serveur (ex. Odoo). Les scripts
+    de vérification des serveurs Odoo filtrent sur ce service."""
     _name = 'is.service'
     _description = "Service"
     _order = 'name'

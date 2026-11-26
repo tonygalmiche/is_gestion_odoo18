@@ -3,6 +3,8 @@ from odoo import models, fields, api
 
 
 class IsSuiviTempsClient(models.Model):
+    """Synthèse mensuelle par client : tâches effectuées, temps passé,
+    facturable et facturé. Calculée à l'import de Google Agenda."""
     _name = 'is.suivi.temps.client'
     _description = 'Suivi du temps par client'
     _order = 'mois desc, partner_id'

@@ -3,6 +3,9 @@ from odoo import api, fields, models  # type: ignore
 
 
 class IsAffaire(models.Model):
+    """Affaire client : projet suivi du devis jusqu'au solde.
+    Numérotée automatiquement, avec CA et frais prévisionnels.
+    Les factures client sont rattachées à l'affaire."""
     _name = 'is.affaire'
     _description = "Affaire"
     _order = 'name desc'

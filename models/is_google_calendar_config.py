@@ -3,6 +3,8 @@ from odoo import fields, models
 
 
 class IsGoogleCalendarConfig(models.Model):
+    """Agenda Google à importer dans le suivi du temps, avec sa
+    couleur d'affichage. Paramétré sur la société."""
     _name = 'is.google.calendar.config'
     _description = 'Configuration des calendriers Google'
     _order = 'name'
